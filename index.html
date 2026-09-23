@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>초록 숲</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="stage" id="stage">
+    <canvas id="game" tabindex="-1" aria-label="숲 맵 게임 화면"></canvas>
+
+    <div class="hud">
+      <div class="chip" id="status" data-tone="info">숲 입구</div>
+      <ul class="chip roster" id="roster" aria-label="접속한 플레이어"></ul>
+      <button class="chip invite" id="invite" type="button" hidden>초대 링크 복사</button>
+    </div>
+    <div class="help chip"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동 · <kbd>Shift</kbd> 달리기</div>
+
+    <div class="pad" id="pad">
+      <button type="button" data-d="up" aria-label="위로">▲</button>
+      <button type="button" data-d="left" aria-label="왼쪽으로">◀</button>
+      <button type="button" data-d="right" aria-label="오른쪽으로">▶</button>
+      <button type="button" data-d="down" aria-label="아래로">▼</button>
+    </div>
+    <button class="run" id="run" type="button">달리기</button>
+
+    <div class="lobby" id="lobby">
+      <form class="card" id="join-form" autocomplete="off">
+        <h1>초록 숲</h1>
+        <p class="sub">친구와 둘이서 같은 숲을 걸어요</p>
+        <label for="name">내 이름</label>
+        <input id="name" name="name" maxlength="12" placeholder="예: 여름" required>
+        <label for="room">방 이름</label>
+        <input id="room" name="room" maxlength="24" pattern="[a-zA-Z0-9\-]+" title="영문, 숫자, - 만 쓸 수 있어요">
+        <p class="hint">친구와 같은 방 이름을 입력하면 같은 숲에서 만나요. 한 방에 최대 2명.</p>
+        <button id="join-btn" type="submit">숲으로 들어가기</button>
+        <p class="msg" id="lobby-msg" role="status"></p>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

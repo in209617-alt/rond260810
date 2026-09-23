@@ -1,0 +1,27 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "$room": {
+        ".read": "auth != null && $room.matches(/^[a-z0-9-]{1,24}$/)",
+        "players": {
+          "$slot": {
+            ".write": "auth != null && $room.matches(/^[a-z0-9-]{1,24}$/) && $slot.matches(/^[01]$/) && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.child('uid').val() === auth.uid && (!newData.exists() || newData.child('uid').val() === auth.uid)))",
+            ".validate": "newData.hasChildren(['uid', 'name', 'slot', 'x', 'y', 'dir', 'moving', 'running', 't'])",
+            "uid": { ".validate": "newData.val() === auth.uid" },
+            "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12" },
+            "slot": { ".validate": "(newData.val() === 0 && $slot === '0') || (newData.val() === 1 && $slot === '1')" },
+            "x": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 960" },
+            "y": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 720" },
+            "dir": { ".validate": "newData.isString() && newData.val().matches(/^(up|down|left|right)$/)" },
+            "moving": { ".validate": "newData.isBoolean()" },
+            "running": { ".validate": "newData.isBoolean()" },
+            "t": { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    }
+  }
+}
