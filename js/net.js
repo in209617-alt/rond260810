@@ -1,12 +1,13 @@
-// Firebase Realtime Database 연결 담당
+// Firebase 연결 담당 (Google 로그인 + Realtime Database)
 //
 // 데이터 구조 (한 방에 자리 2개: "0" = 1P, "1" = 2P)
 //   rooms/{방이름}/players/0 = { uid, name, slot, x, y, dir, moving, running, t }
 //   rooms/{방이름}/players/1 = { ... }
 //
-// - 익명 로그인으로 uid를 받아요.
-// - 빈 자리에만 앉을 수 있고, 앉은 뒤에는 그 자리의 uid 주인만 수정·삭제할 수 있어요 (database.rules.json).
-//   자리가 "0"과 "1" 두 개뿐이라서 세 번째 사람은 규칙에서 자동으로 막혀요.
+// - Google 계정으로 로그인해요.
+// - 누가 들어올 수 있는지는 Firebase 콘솔의 보안 규칙에 적은 이메일 목록이 정해요.
+//   목록에 없는 계정은 방을 읽지도, 자리에 앉지도 못해요.
+// - 빈 자리에만 앉을 수 있고, 앉은 뒤에는 그 자리 주인만 수정·삭제할 수 있어요.
 // - 창을 닫거나 연결이 끊기면 onDisconnect로 서버가 자동으로 내 자리를 비워요.
 
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
@@ -14,6 +15,9 @@ const SLOTS = ["0", "1"];
 
 export class RoomFullError extends Error {
   constructor() { super("room_full"); this.name = "RoomFullError"; }
+}
+export class NotInvitedError extends Error {
+  constructor() { super("not_invited"); this.name = "NotInvitedError"; }
 }
 
 const isPermissionError = e => String(e && (e.code || e.message)).toUpperCase().includes("PERMISSION");
@@ -27,19 +31,24 @@ export async function connect(firebaseConfig) {
   const { ref, get, set, update, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, serverTimestamp } = dbMod;
 
   const app = appMod.initializeApp(firebaseConfig);
-  // 탭마다 다른 익명 계정을 쓰도록 메모리 저장 방식 사용
-  // (같은 컴퓨터에서 탭 두 개로 2인 테스트가 가능해져요)
-  const auth = authMod.initializeAuth(app, { persistence: authMod.inMemoryPersistence });
-  const { user } = await authMod.signInAnonymously(auth);
-  const uid = user.uid;
+  const auth = authMod.getAuth(app); // 로그인 상태는 브라우저에 기억돼요
   const db = dbMod.getDatabase(app);
 
-  let meRef = null, mySlot = null;
-  let lastState = null;
+  let meRef = null, mySlot = null, lastState = null;
   const unsubs = [];
 
-  // 자리 하나에 앉아 보기. 이미 누가 있으면 규칙이 거절해서 false
-  async function trySit(room, slotKey, profile) {
+  function onAuth(fn) { return authMod.onAuthStateChanged(auth, fn); }
+
+  function signIn() {
+    const provider = new authMod.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    return authMod.signInWithPopup(auth, provider);
+  }
+
+  function signOut() { return authMod.signOut(auth); }
+
+  // 자리 하나에 앉아 보기. 이미 누가 있으면 규칙이 거절해서 null
+  async function trySit(room, slotKey, profile, uid) {
     const slot = Number(slotKey);
     const start = profile.spawnFor(slot);
     const r = ref(db, `rooms/${room}/players/${slotKey}`);
@@ -55,14 +64,24 @@ export async function connect(firebaseConfig) {
   }
 
   async function join(room, profile, handlers) {
+    const user = auth.currentUser;
+    if (!user) throw new NotInvitedError();
     const playersRef = ref(db, `rooms/${room}/players`);
-    const current = (await get(playersRef)).val() || {};
+
+    let current;
+    try {
+      current = (await get(playersRef)).val() || {};
+    } catch (e) {
+      // 초대 목록에 없는 계정은 읽기부터 거절돼요
+      if (isPermissionError(e)) throw new NotInvitedError();
+      throw e;
+    }
     const free = SLOTS.filter(k => !current[k]);
     if (!free.length) throw new RoomFullError();
 
     let seat = null;
     for (const k of free) {
-      seat = await trySit(room, k, profile);
+      seat = await trySit(room, k, profile, user.uid);
       if (seat) break; // 동시에 들어온 사람이 먼저 앉았으면 다음 자리 시도
     }
     if (!seat) throw new RoomFullError();
@@ -84,13 +103,13 @@ export async function connect(firebaseConfig) {
           await set(meRef, { ...lastState, t: serverTimestamp() });
           await onDisconnect(meRef).remove();
         } catch (e) {
-          handlers.onKicked?.(); // 끊긴 사이 다른 사람이 자리에 앉음
+          handlers.onKicked?.();
         }
       }
       wasConnected = on;
     }));
 
-    return { uid, slot: seat.slot, start: seat.start };
+    return { slot: seat.slot, start: seat.start };
   }
 
   // 내 상태 보내기 (바뀐 필드만)
@@ -112,5 +131,5 @@ export async function connect(firebaseConfig) {
     meRef = null;
   }
 
-  return { uid, join, send, leave };
+  return { onAuth, signIn, signOut, join, send, leave };
 }

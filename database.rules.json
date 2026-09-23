@@ -4,10 +4,10 @@
     ".write": false,
     "rooms": {
       "$room": {
-        ".read": "auth != null && $room.matches(/^[a-z0-9-]{1,24}$/)",
+        ".read": "auth != null && auth.token.email_verified === true && (auth.token.email === 'MY_EMAIL@gmail.com' || auth.token.email === 'FRIEND_EMAIL@gmail.com') && $room.matches(/^[a-z0-9-]{1,24}$/)",
         "players": {
           "$slot": {
-            ".write": "auth != null && $room.matches(/^[a-z0-9-]{1,24}$/) && $slot.matches(/^[01]$/) && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.child('uid').val() === auth.uid && (!newData.exists() || newData.child('uid').val() === auth.uid)))",
+            ".write": "auth != null && auth.token.email_verified === true && (auth.token.email === 'MY_EMAIL@gmail.com' || auth.token.email === 'FRIEND_EMAIL@gmail.com') && $room.matches(/^[a-z0-9-]{1,24}$/) && $slot.matches(/^[01]$/) && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.child('uid').val() === auth.uid && (!newData.exists() || newData.child('uid').val() === auth.uid)))",
             ".validate": "newData.hasChildren(['uid', 'name', 'slot', 'x', 'y', 'dir', 'moving', 'running', 't'])",
             "uid": { ".validate": "newData.val() === auth.uid" },
             "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12" },

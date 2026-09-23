@@ -3,7 +3,7 @@ import {
   spriteFor, shadowW, blocked, spawnFor, CHAR_FRAMES, PLAYER_LOOKS
 } from "./world.js";
 import { firebaseConfig } from "./firebase-config.js";
-import { connect, RoomFullError } from "./net.js";
+import { connect, RoomFullError, NotInvitedError } from "./net.js";
 
 const SEND_INTERVAL = 70;   // 이동 중 위치 전송 간격(ms) ≈ 초당 14회
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -13,7 +13,8 @@ const DIR_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const $ = id => document.getElementById(id);
 const canvas = $("game"), ctx = canvas.getContext("2d"), stage = $("stage");
 const lobby = $("lobby"), joinForm = $("join-form"), nameInput = $("name"), roomInput = $("room");
-const joinBtn = $("join-btn"), lobbyMsg = $("lobby-msg");
+const joinBtn = $("join-btn"), lobbyMsg = $("lobby-msg"), joinFields = $("join-fields");
+const authBox = $("auth-box"), loginBtn = $("login-btn"), whoEl = $("who"), whoEmail = $("who-email"), logoutBtn = $("logout-btn");
 const statusEl = $("status"), rosterEl = $("roster"), inviteBtn = $("invite");
 
 // ---------- 상태 ----------
@@ -21,22 +22,92 @@ const me = {
   name: "", slot: 0, x: 0, y: 0, dir: "down", moving: false, running: false, anim: 0
 };
 Object.assign(me, spawnFor(0));
-const remotes = new Map(); // uid -> 원격 플레이어
-let net = null, roomName = "", playing = false, connected = true;
+const remotes = new Map(); // 자리 번호("0"/"1") -> 원격 플레이어
+let net = null, user = null, roomName = "", playing = false, connected = true;
 
 // ---------- 로비 ----------
 const params = new URLSearchParams(location.search);
 roomInput.value = cleanRoom(params.get("room") || "") || "forest";
 try { nameInput.value = localStorage.getItem("forest.name") || ""; } catch (e) { /* 저장소 사용 불가 */ }
 const online = Boolean(firebaseConfig.apiKey && firebaseConfig.databaseURL);
-if (!online) {
-  lobbyMsg.textContent = "Firebase 설정이 비어 있어요. 혼자 테스트 모드로 들어가요.";
-  lobbyMsg.dataset.tone = "info";
-}
 
 function cleanRoom(s) {
   return s.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24);
 }
+function say(text, tone = "info") {
+  lobbyMsg.textContent = text;
+  lobbyMsg.dataset.tone = tone;
+}
+
+// 카카오톡 등 앱 내부 브라우저에서는 Google이 로그인을 막아요
+const ua = navigator.userAgent;
+const inApp = /KAKAOTALK|Instagram|FBAN|FBAV|NAVER|Line\/|everytimeApp|DaumApps/i.test(ua);
+if (online && inApp) {
+  $("inapp").hidden = false;
+  const link = $("inapp-link");
+  if (/KAKAOTALK/i.test(ua)) {
+    link.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(location.href);
+  } else if (/Android/i.test(ua)) {
+    link.href = `intent://${location.host}${location.pathname}${location.search}#Intent;scheme=https;package=com.android.chrome;end`;
+  } else {
+    link.hidden = true;
+  }
+}
+
+const AUTH_ERRORS = {
+  "auth/popup-blocked": "로그인 팝업이 차단됐어요. 주소창 옆에서 팝업을 허용하고 다시 눌러 주세요.",
+  "auth/unauthorized-domain": "이 사이트 주소가 Firebase에 등록되지 않았어요. Authentication → 설정 → 승인된 도메인에 추가해 주세요.",
+  "auth/operation-not-allowed": "Firebase에서 Google 로그인이 꺼져 있어요. Authentication → 로그인 방법에서 Google을 켜 주세요.",
+  "auth/network-request-failed": "인터넷 연결을 확인하고 다시 시도해 주세요.",
+  "auth/internal-error": "로그인 중 문제가 생겼어요. Chrome이나 Safari에서 다시 시도해 주세요."
+};
+
+function renderAuth() {
+  authBox.hidden = !online;
+  if (!online) { joinFields.disabled = false; return; }
+  const signedIn = Boolean(user);
+  loginBtn.hidden = signedIn;
+  whoEl.hidden = !signedIn;
+  joinFields.disabled = !signedIn;
+  if (signedIn) whoEmail.textContent = `${user.email} 로 로그인됨`;
+}
+
+if (!online) {
+  say("Firebase 설정이 비어 있어요. 혼자 테스트 모드로 들어가요.");
+  renderAuth();
+} else {
+  joinFields.disabled = true;
+  say("로그인 상태를 확인하는 중…");
+  connect(firebaseConfig).then(n => {
+    net = n;
+    authBox.hidden = false;
+    net.onAuth(u => {
+      user = u;
+      if (u && !nameInput.value) nameInput.value = (u.displayName || "").trim().slice(0, 12);
+      renderAuth();
+      if (!playing) say(u ? "" : "초대받은 Google 계정으로 로그인해 주세요.");
+    });
+  }).catch(err => {
+    console.error(err);
+    say("Firebase를 불러오지 못했어요. 인터넷 연결과 firebase-config.js 값을 확인해 주세요.", "warn");
+  });
+}
+
+loginBtn.addEventListener("click", async () => {
+  if (!net) return;
+  loginBtn.disabled = true;
+  try {
+    await net.signIn();
+  } catch (err) {
+    console.error(err);
+    if (err.code !== "auth/popup-closed-by-user" && err.code !== "auth/cancelled-popup-request") {
+      say(AUTH_ERRORS[err.code] || `로그인하지 못했어요. (${err.code || err.message})`, "warn");
+    }
+  } finally {
+    loginBtn.disabled = false;
+  }
+});
+logoutBtn.addEventListener("click", () => net?.signOut());
 
 joinForm.addEventListener("submit", async e => {
   e.preventDefault();
@@ -47,12 +118,11 @@ joinForm.addEventListener("submit", async e => {
   me.name = name;
 
   if (!online) { startGame(); setStatus("혼자 테스트 모드", "info"); renderRoster(); return; }
+  if (!net || !user) { say("먼저 Google 계정으로 로그인해 주세요.", "warn"); return; }
 
   joinBtn.disabled = true;
-  lobbyMsg.dataset.tone = "info";
-  lobbyMsg.textContent = "숲에 연결하는 중…";
+  say("숲에 연결하는 중…");
   try {
-    net = net || await connect(firebaseConfig);
     const res = await net.join(room, { name, spawnFor }, {
       onJoin: (id, p) => upsertRemote(id, p, true),
       onMove: (id, p) => upsertRemote(id, p, false),
@@ -73,10 +143,9 @@ joinForm.addEventListener("submit", async e => {
     renderRoster();
   } catch (err) {
     console.error(err);
-    lobbyMsg.dataset.tone = "warn";
-    lobbyMsg.textContent = err instanceof RoomFullError
-      ? "이 방에는 이미 두 명이 있어요. 다른 방 이름을 입력해 주세요."
-      : "Firebase에 연결하지 못했어요. firebase-config.js 값과 익명 로그인 설정을 확인해 주세요.";
+    if (err instanceof RoomFullError) say("이 방에는 이미 두 명이 있어요. 다른 방 이름을 입력해 주세요.", "warn");
+    else if (err instanceof NotInvitedError) say(`${user.email} 계정은 초대 목록에 없어요. 게임 주인에게 이 이메일을 등록해 달라고 부탁해 주세요.`, "warn");
+    else say("숲에 들어가지 못했어요. 잠시 후 다시 시도해 주세요.", "warn");
   } finally {
     joinBtn.disabled = false;
   }
