@@ -346,3 +346,132 @@ button { -webkit-tap-highlight-color: transparent; }
   .hb-hint { top: 58px; bottom: auto; font-size: 14px; }
   .toasts { top: 96px; }
 }
+
+/* =========================================================
+   채팅 · 말풍선 메뉴 · 1:1 대화 · 선물 · 프로필
+   ========================================================= */
+/* PC: 코인을 아래 바 안쪽에 두고, 채팅창은 왼쪽 아래 */
+@media (pointer: fine) {
+  .hotbar > .coins { position: static; box-shadow: none; }
+}
+.chat {
+  position: absolute; left: 12px; bottom: calc(var(--slot) + 34px); z-index: 6;
+  width: min(330px, 42%); display: flex; flex-direction: column; gap: 6px;
+}
+@media (pointer: fine) and (min-width: 1250px) { .chat { bottom: 12px; } }
+.chat-log {
+  list-style: none; margin: 0; padding: 6px 10px; max-height: 128px; overflow-y: auto;
+  background: rgba(30, 24, 18, .55); color: #fff8e8; border-radius: 8px;
+  font-size: 15px; line-height: 1.35; overflow-wrap: anywhere;
+}
+.chat-log:empty { display: none; }
+.chat-log b { font-weight: 400; margin-right: 2px; }
+.chat-form { display: flex; gap: 6px; }
+.chat-form input, .talk-form input {
+  flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--ink);
+  background: #fffaf0; border: 3px solid var(--panel-edge); border-radius: 8px; padding: 5px 10px;
+}
+.chat-form input:focus-visible, .talk-form input:focus-visible { outline: 3px solid #ffd98a; outline-offset: 1px; }
+.chat-toggle { display: none; }
+
+/* 모바일: 채팅 기록은 방향 버튼 위, 입력창은 "채팅" 버튼을 누르면 아래에 */
+@media (pointer: coarse) {
+  .chat { left: 8px; right: 8px; width: auto; bottom: calc(var(--slot) + 230px); pointer-events: none; }
+  .chat-log { max-height: 76px; font-size: 13px; width: min(70%, 300px); background: transparent; padding: 0; }
+  .chat-log li { background: rgba(30, 24, 18, .55); border-radius: 6px; padding: 2px 8px; margin-top: 3px; width: fit-content; max-width: 100%; transition: opacity .6s; }
+  .chat-log li.old { opacity: 0; pointer-events: none; }
+  .chat-form { display: none; }
+  .chat.open { bottom: calc(var(--slot) + 30px); pointer-events: auto; z-index: 12; }
+  .chat.open .chat-log { display: none; }
+  .chat.open .chat-form { display: flex; }
+  .chat-toggle {
+    display: block; position: absolute; right: 10px; bottom: calc(var(--slot) + 30px); z-index: 7;
+    font: inherit; font-size: 15px; color: var(--ink); background: var(--panel);
+    border: 3px solid var(--panel-edge); border-radius: 8px; padding: 4px 12px; box-shadow: 0 3px 0 rgba(0,0,0,.25);
+  }
+  .chat-toggle[hidden] { display: none; }
+}
+
+/* 친구 캐릭터를 눌렀을 때 나오는 메뉴 */
+.pmenu {
+  position: absolute; z-index: 15; display: flex; flex-direction: column; gap: 6px; min-width: 128px;
+  background: var(--panel); border: 3px solid var(--panel-edge); border-radius: 10px; padding: 8px;
+  box-shadow: 0 4px 0 rgba(0,0,0,.25);
+}
+.pmenu-name { margin: 0 0 2px; text-align: center; font-size: 16px; color: var(--ink); }
+.pmenu .act { font-size: 17px; padding: 6px 12px; }
+
+/* 받은 요청 */
+.req-modal { z-index: 40; background: rgba(20, 32, 18, .35); }
+.req-panel { width: min(340px, 100%); text-align: center; }
+.req-text { margin: 4px 0; font-size: 20px; }
+.req-btns { display: flex; gap: 10px; justify-content: center; }
+.req-btns .act { font-size: 18px; padding: 6px 22px; }
+
+/* 1:1 대화창 (비주얼노벨 스타일) */
+.talk-modal { z-index: 25; }
+.talk-panel { width: min(760px, 100%); }
+.talk-scene {
+  position: relative; aspect-ratio: 16 / 9; max-height: 52vh; width: 100%;
+  border: 3px solid var(--panel-edge); border-radius: 10px; overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(255, 240, 200, .5), transparent 60%),
+    linear-gradient(#9fd0e8 0%, #cde9c4 55%, #7cb342 56%, #5f9a39 100%);
+}
+.portrait {
+  position: absolute; bottom: 0; width: 44%; height: 88%;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  transition: filter .25s, transform .25s;
+}
+.portrait.left { left: 2%; }
+.portrait.right { right: 2%; }
+.portrait img, .portrait canvas { max-width: 100%; max-height: 100%; object-fit: contain; object-position: bottom; }
+.portrait canvas.pixel { height: 78%; width: auto; image-rendering: pixelated; }
+.portrait.dim { filter: brightness(.45) saturate(.7); }
+.portrait.speaking { transform: translateY(-2%) scale(1.03); }
+.portrait-name {
+  position: absolute; top: 4px; font-size: 14px; color: #fff8e8; background: rgba(30, 24, 18, .55);
+  padding: 1px 8px; border-radius: 6px;
+}
+.talk-box {
+  position: absolute; left: 3%; right: 3%; bottom: 4%; min-height: 26%;
+  background: rgba(30, 24, 18, .86); color: #fff8e8; border: 2px solid #fff8e8; border-radius: 8px;
+  padding: 14px 16px 10px; box-shadow: 0 4px 0 rgba(0,0,0,.3);
+}
+.talk-name {
+  position: absolute; left: 12px; top: -16px; padding: 2px 14px; border-radius: 6px;
+  background: var(--accent); color: #fff; font-size: 17px; min-height: 1em;
+}
+.talk-name:empty { display: none; }
+.talk-text { margin: 0; font-size: clamp(15px, 2.4vw, 20px); line-height: 1.45; overflow-wrap: anywhere; }
+.talk-log {
+  list-style: none; margin: 0; padding: 6px 10px; max-height: 92px; overflow-y: auto;
+  background: #fffaf0; border: 2px dashed var(--panel-edge); border-radius: 8px; font-size: 14px; line-height: 1.4;
+}
+.talk-log:empty { display: none; }
+.talk-log b { font-weight: 400; }
+.talk-form { display: flex; gap: 6px; }
+@media (max-width: 520px) {
+  .talk-scene { aspect-ratio: 4 / 3; }
+  .talk-box { min-height: 34%; padding: 12px 10px 8px; }
+}
+
+/* 선물 고르기 */
+.gift-modal { z-index: 26; }
+.gift-panel { width: min(460px, 100%); }
+.gift-panel > .dim { margin: 0; }
+.gift-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+.slot.gift-item { width: auto; height: auto; aspect-ratio: auto; padding: 8px 4px 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.slot.gift-item .icon { width: 36px; height: 36px; }
+.gift-name { font-size: 13px; }
+
+/* 가방 안 프로필 버튼 */
+.preview-col { display: flex; flex-direction: column; gap: 6px; }
+.profile-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font: inherit; font-size: 14px; color: var(--ink); cursor: pointer;
+  background: #fffaf0; border: 2px solid var(--panel-edge); border-radius: 8px; padding: 4px 6px;
+  touch-action: manipulation;
+}
+.profile-btn:hover { background: #ffe9c2; }
+.profile-thumb { width: 24px; height: 24px; object-fit: cover; border-radius: 4px; border: 1px solid var(--panel-edge); }
