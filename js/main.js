@@ -718,13 +718,13 @@ function interact(o, now) {
       }
       return;
     }
-    if (o.type === "tree") { floatText(o.x, top, "사과가 아직 없어요", "#fff8e8", "#7a5a3e"); sfx.miss(); return; }
+    if (o.type === "tree") { floatText(o.x, top, "아무것도 없다", "#fff8e8", "#7a5a3e"); sfx.miss(); return; }
   }
   // 열매 없는 덤불: 일정 확률로 잡초
   if (o.searchedAt && now - o.searchedAt < GATHER.bushCooldown) { floatText(o.x, top, "…", "#fff8e8", "#7a5a3e"); return; }
   o.searchedAt = now;
   if (Math.random() < GATHER.weedChance) giveItem("weed", o.x, top);
-  else { floatText(o.x, top, "아무것도 없었다", "#fff8e8", "#7a5a3e"); sfx.miss(); }
+  else { floatText(o.x, top, "아무것도 없다", "#fff8e8", "#7a5a3e"); sfx.miss(); }
 }
 
 // 누른 위치의 버섯 (한 칸 크기로 넉넉하게 판정)

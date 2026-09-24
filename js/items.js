@@ -13,7 +13,7 @@
 // knockout  : 먹으면 이 시간(ms) 동안 쓰러져서 움직일 수 없어요
 
 export const ITEMS = {
-  weed:    { name: "잡초", kind: "food", stack: 99, sell: 1, color: "#6fae43", desc: "어디에나 자라는 풀. 씹으면 풋풋해요." },
+  weed:    { name: "잡초", kind: "food", stack: 99, sell: 1, color: "#6fae43", desc: "씹으면 풋풋하다!" },
   berry:   { name: "베리", kind: "food", stack: 99, sell: 3, color: "#5b6ee0", desc: "덤불에서 딴 새콤달콤한 열매." },
   apple:   { name: "사과", kind: "food", stack: 99, sell: 3, color: "#d8453a", desc: "나무에서 딴 아삭한 사과." },
   mushroom:{ name: "버섯", kind: "food", stack: 99, sell: 2, color: "#c9423a", desc: "숲 바닥에서 주운 빨간 버섯. 먹어도 괜찮을까…?", knockout: 5000 },
