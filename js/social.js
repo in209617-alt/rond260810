@@ -57,6 +57,7 @@ export function createSocial({ root, ui, inv, getNet, me, players, portraitCanva
     const who = el("b", null, msg.name);
     who.style.color = SLOT_COLOR[msg.slot === 1 ? 1 : 0];
     li.append(who, document.createTextNode(" " + msg.text));
+    li.dataset.t = String(typeof msg.t === "number" ? msg.t : Date.now());
     chatLog.append(li);
     setTimeout(() => li.classList.add("old"), 10000);   // 모바일에서는 10초 뒤 흐려지며 사라져요
     while (chatLog.children.length > 40) chatLog.firstChild.remove();
@@ -64,6 +65,13 @@ export function createSocial({ root, ui, inv, getNet, me, players, portraitCanva
     const now = online ? getNet().serverNow() : Date.now();
     if (typeof msg.t === "number" && now - msg.t < 8000) say(String(msg.slot), msg.text);
   }
+
+  // 4시간 지난 채팅은 화면에서도 지워요 (1분마다 확인)
+  const CHAT_TTL = 4 * 60 * 60 * 1000;
+  setInterval(() => {
+    const now = online ? getNet().serverNow() : Date.now();
+    chatLog.querySelectorAll("li").forEach(li => { if (now - Number(li.dataset.t) >= CHAT_TTL) li.remove(); });
+  }, 60000);
 
   chatForm.addEventListener("submit", e => {
     e.preventDefault();
@@ -460,6 +468,16 @@ export function createSocial({ root, ui, inv, getNet, me, players, portraitCanva
     openPlayerMenu,
     closeMenu,
     pickProfile: () => fileInput.click(),
+    // 대화용 그림 지우기 → 대화창에는 도트 캐릭터가 나와요 (상대 화면에도 바로 반영)
+    clearProfile() {
+      delete profiles[mySlot()];
+      if (profileKey) { try { localStorage.removeItem(profileKey); } catch (e) { /* 무시 */ } }
+      ui.setProfileThumb?.(null);
+      if (online) getNet().clearProfile();
+      renderPortraits();
+      ui.toast("대화용 그림을 삭제했어요");
+      sfx.trash();
+    },
     focusChat() { if (!talk) { chat.classList.add("open"); chatInput.focus(); } },
     // 게임에 들어갈 때 한 번 호출
     start(owner, isOnline) {

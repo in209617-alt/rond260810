@@ -15,6 +15,7 @@ const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
 const SLOTS = ["0", "1"];
 export const HEARTBEAT_MS = 5000;
 export const STALE_MS = 20000;
+export const CHAT_TTL = 4 * 60 * 60 * 1000;   // 채팅은 쓴 지 4시간이 지나면 자동으로 지워져요
 
 export class RoomFullError extends Error {
   constructor() { super("room_full"); this.name = "RoomFullError"; }
@@ -217,8 +218,21 @@ export async function connect(firebaseConfig) {
     return push(ref(db, `rooms/${roomKey}/chat`), { uid: myUid, name, slot, text, t: serverTimestamp() }).catch(fail("채팅 보내기"));
   }
   function onChat(cb) {
-    const u = onChildAdded(query(ref(db, `rooms/${roomKey}/chat`), limitToLast(40)), s => cb(s.val()), fail("채팅 읽기"));
+    const u = onChildAdded(query(ref(db, `rooms/${roomKey}/chat`), limitToLast(40)), s => {
+      const m = s.val();
+      if (m && typeof m.t === "number" && serverNow() - m.t < CHAT_TTL) cb(m);
+    }, fail("채팅 읽기"));
     unsubs.push(u);
+    cleanupChat();
+    const timer = setInterval(cleanupChat, 10 * 60 * 1000);   // 10분마다 확인
+    unsubs.push(() => clearInterval(timer));
+  }
+  // 4시간 지난 채팅을 서버에서 지우기
+  function cleanupChat() {
+    if (!roomKey) return;
+    get(query(ref(db, `rooms/${roomKey}/chat`), orderByChild("t"), endAt(serverNow() - CHAT_TTL)))
+      .then(snap => snap.forEach(c => { remove(c.ref).catch(fail("오래된 채팅 지우기")); }))
+      .catch(() => {});
   }
   function sendEvent(to, type, extra = {}) {
     if (!roomKey) return Promise.resolve();
@@ -240,6 +254,10 @@ export async function connect(firebaseConfig) {
     if (!roomKey || !myUid) return Promise.resolve();
     return set(ref(db, `rooms/${roomKey}/profiles/${myUid}`), dataUrl).catch(fail("프로필 올리기"));
   }
+  function clearProfile() {
+    if (!roomKey || !myUid) return Promise.resolve();
+    return remove(ref(db, `rooms/${roomKey}/profiles/${myUid}`)).catch(fail("프로필 지우기"));
+  }
   function watchProfile(uid, cb) {
     const u = onValue(ref(db, `rooms/${roomKey}/profiles/${uid}`), s => cb(s.val()), () => {});
     unsubs.push(u);
@@ -260,6 +278,6 @@ export async function connect(firebaseConfig) {
   }
 
   return { onAuth, signIn, signOut, join, send, sendLook, leave, debugInfo,
-    sendChat, onChat, sendEvent, onEvent, setProfile, watchProfile, serverNow,
+    sendChat, onChat, sendEvent, chatTtl: CHAT_TTL, onEvent, setProfile, clearProfile, watchProfile, serverNow,
     get mySlot() { return mySlot; }, get uid() { return auth.currentUser?.uid || null; } };
 }

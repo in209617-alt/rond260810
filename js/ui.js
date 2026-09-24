@@ -11,7 +11,7 @@ const el = (tag, cls, text) => {
   return e;
 };
 
-export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange, onProfile }) {
+export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange, onProfile, onProfileDelete }) {
   // ---------- 아이콘 ----------
   function iconEl(id) {
     const img = art("items/" + id);
@@ -99,7 +99,16 @@ export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange, onP
   profileBtn.append(profileThumb, el("span", null, "프로필 추가하기"));
   profileBtn.title = "PNG 그림을 넣으면 1:1 대화창에 나와요";
   profileBtn.addEventListener("click", () => onProfile?.());
-  previewCol.append(previewBox, profileBtn);
+  // 대화용 그림 삭제 (삭제하면 대화창에 도트 캐릭터가 나와요)
+  const profileDel = el("button", "profile-del", "삭제");
+  profileDel.type = "button";
+  profileDel.hidden = true;
+  profileDel.title = "대화용 그림 삭제";
+  profileDel.setAttribute("aria-label", "대화용 그림 삭제");
+  profileDel.addEventListener("click", () => onProfileDelete?.());
+  const profileRow = el("div", "profile-row");
+  profileRow.append(profileBtn, profileDel);
+  previewCol.append(previewBox, profileRow);
   const info = el("div", "hand-info");
   bagTop.append(equipCol, previewCol, info);
 
@@ -462,6 +471,7 @@ export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange, onP
       profileThumb.src = url || "";
       profileThumb.hidden = !url;
       profileBtn.querySelector("span").textContent = url ? "프로필 바꾸기" : "프로필 추가하기";
+      profileDel.hidden = !url;
     },
     setVisible(v) { hotbar.hidden = !v; if (!v) hint.hidden = true; else renderHint(); }
   };

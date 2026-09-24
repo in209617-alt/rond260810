@@ -637,6 +637,7 @@ const ui = createUI({
   art: name => ART[name] || null,
   drawPreview,
   onProfile: () => social.pickProfile(),
+  onProfileDelete: () => social.clearProfile(),
   onUse: i => useSlot(i),
   onOpenChange: open => {
     if (open) { held = []; shift = false; document.querySelectorAll("#pad button").forEach(b => b.classList.remove("on")); }
