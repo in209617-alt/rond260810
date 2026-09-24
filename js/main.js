@@ -1,22 +1,100 @@
 import {
   T, MW, MH, WALK, RUN, PAL, WATER, ground, idx, objects, groundCanvas,
   spriteFor, shadowW, blocked, spawnFor, CHAR_FRAMES, PLAYER_LOOKS
-} from "./world.js?v=7";
-import { firebaseConfig } from "./firebase-config.js?v=7";
-import { connect, RoomFullError, NotInvitedError } from "./net.js?v=7";
+} from "./world.js?v=8";
+import { firebaseConfig } from "./firebase-config.js?v=8";
+import { connect, RoomFullError, NotInvitedError } from "./net.js?v=8";
 
 const SEND_INTERVAL = 70;   // 이동 중 위치 전송 간격(ms) ≈ 초당 14회
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DIR_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
+const VERSION = "v8";
+
+// ---------- 화면 만들기 ----------
+// 화면 UI는 여기서 직접 만들어요. index.html이 예전 버전이어도 항상 최신 화면이 나와요.
+const UI_HTML = `
+<div class="hud">
+  <div class="chip" id="status" data-tone="info">숲 입구</div>
+  <ul class="chip roster" id="roster" aria-label="접속한 플레이어"></ul>
+  <button class="chip invite" id="invite" type="button" hidden>초대 링크 복사</button>
+  <button class="chip invite" id="info-btn" type="button" hidden aria-expanded="false">접속 정보</button>
+  <div class="chip info" id="info" hidden></div>
+</div>
+<div class="help chip"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동 · <kbd>Shift</kbd> 달리기</div>
+
+<div class="pad" id="pad">
+  <button type="button" data-d="up" aria-label="위로">▲</button>
+  <button type="button" data-d="left" aria-label="왼쪽으로">◀</button>
+  <button type="button" data-d="right" aria-label="오른쪽으로">▶</button>
+  <button type="button" data-d="down" aria-label="아래로">▼</button>
+</div>
+<button class="run" id="run" type="button">달리기</button>
+
+<div class="lobby" id="lobby">
+  <form class="card" id="join-form" autocomplete="off">
+    <h1>초록 숲</h1>
+    <p class="sub">친구와 둘이서 같은 숲을 걸어요</p>
+
+    <p class="inapp" id="inapp" hidden>
+      카카오톡·인스타그램 같은 앱 안에서는 Google 로그인이 막혀 있어요.
+      <a id="inapp-link" href="#">Chrome이나 Safari로 열기</a>
+      <span>또는 오른쪽 위 메뉴에서 "다른 브라우저로 열기"를 눌러 주세요.</span>
+    </p>
+
+    <div class="auth" id="auth-box" hidden>
+      <button type="button" class="google" id="login-btn">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72A5.41 5.41 0 0 1 3.68 9c0-.6.1-1.18.29-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+        Google 계정으로 로그인
+      </button>
+      <p class="who" id="who" hidden>
+        <span id="who-email"></span>
+        <button type="button" class="link" id="logout-btn">로그아웃</button>
+      </p>
+    </div>
+
+    <fieldset class="fields" id="join-fields">
+      <label for="name">내 이름</label>
+      <input id="name" name="name" maxlength="12" placeholder="예: 여름" required>
+      <label for="room">방 이름</label>
+      <input id="room" name="room" maxlength="24" pattern="[a-zA-Z0-9\\-]+" title="영문, 숫자, - 만 쓸 수 있어요">
+      <p class="hint">친구와 같은 방 이름을 입력하면 같은 숲에서 만나요. 한 방에 최대 2명.</p>
+      <button id="join-btn" type="submit">숲으로 들어가기</button>
+    </fieldset>
+    <p class="msg" id="lobby-msg" role="status"></p>
+    <p class="ver">버전 ${VERSION} · Google 로그인</p>
+  </form>
+</div>
+`;
+const stage = document.getElementById("stage");
+stage.querySelectorAll(":scope > :not(canvas)").forEach(el => el.remove());
+if (!document.getElementById("game")) {
+  const c = document.createElement("canvas");
+  c.id = "game"; c.tabIndex = -1; c.setAttribute("aria-label", "숲 맵 게임 화면");
+  stage.prepend(c);
+}
+stage.insertAdjacentHTML("beforeend", UI_HTML);
+// 스타일 파일도 최신 버전으로
+document.querySelectorAll('link[rel="stylesheet"]').forEach(l => {
+  if (/(^|\/)style\.css/.test(l.getAttribute("href") || "")) l.href = "style.css?v=8";
+});
+
 // ---------- DOM ----------
 const $ = id => document.getElementById(id);
-const canvas = $("game"), ctx = canvas.getContext("2d"), stage = $("stage");
+const canvas = $("game"), ctx = canvas.getContext("2d");
 const lobby = $("lobby"), joinForm = $("join-form"), nameInput = $("name"), roomInput = $("room");
 const joinBtn = $("join-btn"), lobbyMsg = $("lobby-msg"), joinFields = $("join-fields");
 const authBox = $("auth-box"), loginBtn = $("login-btn"), whoEl = $("who"), whoEmail = $("who-email"), logoutBtn = $("logout-btn");
 const statusEl = $("status"), rosterEl = $("roster"), inviteBtn = $("invite");
 const infoBtn = $("info-btn"), infoEl = $("info");
+
+// 예상하지 못한 오류가 나면 화면 왼쪽 위에 표시 (문제 확인용)
+function showCrash(msg) {
+  console.error("[forest] 오류:", msg);
+  if (statusEl) { statusEl.textContent = `오류: ${msg}`; statusEl.dataset.tone = "warn"; }
+}
+addEventListener("error", e => showCrash(e.message));
+addEventListener("unhandledrejection", e => showCrash(e.reason?.message || String(e.reason)));
 
 // ---------- 상태 ----------
 const me = {
