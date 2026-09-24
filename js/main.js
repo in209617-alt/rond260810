@@ -657,7 +657,17 @@ function portraitCanvas(slotKey) {
   const g = c.getContext("2d");
   g.imageSmoothingEnabled = false;
   drawCharacter(g, slot, "down", 0, ch.w / 2, ch.h - 1, self ? inv.equip : r?.look);
-  return c;
+  // 위쪽 빈 공간을 잘라 내서 캐릭터가 대화창을 꽉 채우도록
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    if (d[(y * c.width + x) * 4 + 3] > 0) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  }
+  if (x1 < 0) return c;
+  const out = document.createElement("canvas");
+  out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+  out.getContext("2d").drawImage(c, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+  return out;
 }
 social = createSocial({
   root: stage,
