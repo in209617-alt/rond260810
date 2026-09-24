@@ -487,3 +487,13 @@ button { -webkit-tap-highlight-color: transparent; }
     height: 94%; width: auto; max-height: none; max-width: none;
   }
 }
+
+/* 프로필 버튼 옆 삭제 버튼 */
+.profile-row { display: flex; gap: 4px; }
+.profile-row .profile-btn { flex: 1; min-width: 0; }
+.profile-del {
+  font: inherit; font-size: 14px; color: #fff; cursor: pointer; white-space: nowrap;
+  background: var(--warn); border: 2px solid #7a3324; border-radius: 8px; padding: 4px 8px;
+  touch-action: manipulation;
+}
+.profile-del:hover { background: #c95c43; }
