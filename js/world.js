@@ -153,80 +153,123 @@ export function spawnFor(slot) {
   return { x: (SPAWN.tx + (slot === 1 ? -2 : 0)) * T + T / 2, y: SPAWN.ty * T + T - 2 };
 }
 
-// ---------- 바닥 레이어 (한 번만 그림) ----------
-export const [groundCanvas, g] = makeCanvas(MW * T, MH * T);
+// =====================================================================
+//  그래픽 리소스
+//  게임 화면에 쓰이는 그림은 전부 assets/ 폴더의 PNG 파일에서 불러와요.
+//  파일이 없거나 불러오지 못하면 아래 "기본 그림"을 대신 써요.
+// =====================================================================
+
+// ---------- 바닥 배치 (어느 칸에 어떤 그림을 놓을지) ----------
 const blobs = Array.from({ length: 26 }, () => ({ x: rng() * MW, y: rng() * MH, r: 2 + rng() * 4 }));
 const darkPatch = (x, y) => blobs.some(b => dist2(x, y, b.x, b.y) < b.r * b.r);
 const typeAt = (x, y) => inMap(x, y) ? ground[idx(x, y)] : GRASS;
+const tileHash = (x, y, salt) => mulberry32(x * 928371 + y * 12345 + salt)();
 
-for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
-  const px = tx * T, py = ty * T, t = ground[idx(tx, ty)];
-  const tr = mulberry32(tx * 928371 + ty * 12345 + 7);
-  if (t === GRASS) {
-    g.fillStyle = darkPatch(tx, ty) ? PAL.grass2 : PAL.grass1;
-    g.fillRect(px, py, T, T);
-    for (let i = 0; i < 5; i++) {
-      const bx = px + Math.floor(tr() * 15), by = py + Math.floor(tr() * 14);
-      g.fillStyle = tr() < 0.6 ? PAL.blade : PAL.bladeDark;
-      g.fillRect(bx, by, 1, 2);
-      if (tr() < 0.5) g.fillRect(bx + 1, by - 1, 1, 2);
-    }
-  } else if (t === PATH) {
-    g.fillStyle = PAL.path; g.fillRect(px, py, T, T);
-    for (let i = 0; i < 6; i++) {
-      g.fillStyle = tr() < 0.5 ? PAL.pathDark : PAL.pathLight;
-      g.fillRect(px + Math.floor(tr() * 15), py + Math.floor(tr() * 15), tr() < 0.3 ? 2 : 1, 1);
-    }
-  } else {
-    const deep = typeAt(tx, ty - 1) === WATER && typeAt(tx, ty - 2) === WATER && typeAt(tx - 1, ty) === WATER && typeAt(tx + 1, ty) === WATER;
-    g.fillStyle = deep ? PAL.waterDeep : PAL.water; g.fillRect(px, py, T, T);
-  }
-}
-for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
-  if (ground[idx(tx, ty)] !== PATH) continue;
-  const px = tx * T, py = ty * T, tr = mulberry32(tx * 31 + ty * 977);
-  for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-    if (typeAt(tx + dx, ty + dy) !== GRASS) continue;
-    g.fillStyle = PAL.grass1;
-    for (let i = 0; i < T; i += 2) {
-      const len = 1 + Math.floor(tr() * 3);
-      if (dy === -1) g.fillRect(px + i, py, 2, len);
-      if (dy === 1) g.fillRect(px + i, py + T - len, 2, len);
-      if (dx === -1) g.fillRect(px, py + i, len, 2);
-      if (dx === 1) g.fillRect(px + T - len, py + i, len, 2);
-    }
-  }
-}
-for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
-  if (ground[idx(tx, ty)] !== WATER) continue;
-  const px = tx * T, py = ty * T;
-  if (typeAt(tx, ty - 1) !== WATER) { g.fillStyle = PAL.shore; g.fillRect(px, py, T, 3); g.fillStyle = PAL.waterLight; g.fillRect(px, py + 3, T, 1); }
-  if (typeAt(tx, ty + 1) !== WATER) { g.fillStyle = PAL.waterLight; g.fillRect(px, py + T - 2, T, 2); }
-  if (typeAt(tx - 1, ty) !== WATER) { g.fillStyle = PAL.shore; g.fillRect(px, py, 2, T); }
-  if (typeAt(tx + 1, ty) !== WATER) { g.fillStyle = PAL.shore; g.fillRect(px + T - 2, py, 2, T); }
-}
-const flowerColors = [["#fff6f0", "#f3c13a"], ["#f59ab5", "#fff0a0"], ["#b58cf0", "#fff0a0"], ["#ffd84a", "#e0873a"]];
+export const FLOWER_NAMES = ["decor/flower_white", "decor/flower_pink", "decor/flower_purple", "decor/flower_yellow"];
+const decor = new Array(MW * MH).fill(null);
 for (let ty = 1; ty < MH - 1; ty++) for (let tx = 1; tx < MW - 1; tx++) {
   if (ground[idx(tx, ty)] !== GRASS || occupied[idx(tx, ty)]) continue;
-  const r = rng(), px = tx * T, py = ty * T;
-  if (r < 0.07) {
-    const [petal, center] = flowerColors[Math.floor(rng() * flowerColors.length)];
-    const n = 1 + Math.floor(rng() * 3);
-    for (let i = 0; i < n; i++) {
-      const fx = px + 2 + Math.floor(rng() * 11), fy = py + 2 + Math.floor(rng() * 11);
-      g.fillStyle = PAL.bladeDark; g.fillRect(fx + 1, fy + 2, 1, 2);
-      g.fillStyle = petal; g.fillRect(fx, fy + 1, 3, 1); g.fillRect(fx + 1, fy, 1, 3);
-      g.fillStyle = center; g.fillRect(fx + 1, fy + 1, 1, 1);
-    }
-  } else if (r < 0.08) {
-    const fx = px + 4 + Math.floor(rng() * 7), fy = py + 5 + Math.floor(rng() * 6);
-    g.fillStyle = "#f3e7d2"; g.fillRect(fx + 1, fy + 2, 2, 2);
-    g.fillStyle = "#c9423a"; g.fillRect(fx, fy, 4, 2); g.fillRect(fx + 1, fy - 1, 2, 1);
-    g.fillStyle = "#fff"; g.fillRect(fx + 1, fy, 1, 1);
-  }
+  const r = rng();
+  if (r < 0.07) decor[idx(tx, ty)] = FLOWER_NAMES[Math.floor(rng() * FLOWER_NAMES.length)];
+  else if (r < 0.08) decor[idx(tx, ty)] = "decor/mushroom";
 }
 
-// ---------- 오브젝트 스프라이트 ----------
+// ---------- 리소스 목록 ----------
+// 이름 = assets/ 폴더 안의 경로(확장자 .png 제외)
+export const ASSET_LIST = [
+  "tiles/grass_1", "tiles/grass_2", "tiles/grass_3", "tiles/grass_4",
+  "tiles/grass_dark_1", "tiles/grass_dark_2",
+  "tiles/path_1", "tiles/path_2",
+  "tiles/water", "tiles/water_deep",
+  "tiles/path_edge_top", "tiles/path_edge_bottom", "tiles/path_edge_left", "tiles/path_edge_right",
+  "tiles/shore_top", "tiles/shore_bottom", "tiles/shore_left", "tiles/shore_right",
+  ...FLOWER_NAMES, "decor/mushroom",
+  "objects/tree_1", "objects/tree_2", "objects/tree_apple", "objects/pine",
+  "objects/bush", "objects/bush_berry", "objects/rock", "objects/stump", "objects/sign",
+  "characters/player1", "characters/player2",
+  "effects/shadow", "effects/water_sparkle", "effects/leaf_1", "effects/leaf_2"
+];
+
+// ---------- 기본 그림 만들기 (assets 폴더에 파일이 없을 때 사용) ----------
+function grassTile(base, seed) {
+  const [c, g] = makeCanvas(T, T);
+  g.fillStyle = base; g.fillRect(0, 0, T, T);
+  const tr = mulberry32(seed);
+  for (let i = 0; i < 6; i++) {
+    const bx = Math.floor(tr() * 15), by = 1 + Math.floor(tr() * 13);
+    g.fillStyle = tr() < 0.6 ? PAL.blade : PAL.bladeDark;
+    g.fillRect(bx, by, 1, 2);
+    if (tr() < 0.5) g.fillRect(bx + 1, by - 1, 1, 2);
+  }
+  return c;
+}
+function pathTile(seed) {
+  const [c, g] = makeCanvas(T, T);
+  g.fillStyle = PAL.path; g.fillRect(0, 0, T, T);
+  const tr = mulberry32(seed);
+  for (let i = 0; i < 7; i++) {
+    g.fillStyle = tr() < 0.5 ? PAL.pathDark : PAL.pathLight;
+    g.fillRect(Math.floor(tr() * 15), Math.floor(tr() * 15), tr() < 0.3 ? 2 : 1, 1);
+  }
+  return c;
+}
+function solidTile(color) {
+  const [c, g] = makeCanvas(T, T);
+  g.fillStyle = color; g.fillRect(0, 0, T, T);
+  return c;
+}
+// 길 가장자리에 덮는 풀 (투명 배경)
+function pathEdge(side) {
+  const [c, g] = makeCanvas(T, T);
+  const tr = mulberry32({ top: 11, bottom: 22, left: 33, right: 44 }[side]);
+  g.fillStyle = PAL.grass1;
+  for (let i = 0; i < T; i += 2) {
+    const len = 1 + Math.floor(tr() * 3);
+    if (side === "top") g.fillRect(i, 0, 2, len);
+    if (side === "bottom") g.fillRect(i, T - len, 2, len);
+    if (side === "left") g.fillRect(0, i, len, 2);
+    if (side === "right") g.fillRect(T - len, i, len, 2);
+  }
+  return c;
+}
+// 물가 테두리 (투명 배경)
+function shoreEdge(side) {
+  const [c, g] = makeCanvas(T, T);
+  if (side === "top") { g.fillStyle = PAL.shore; g.fillRect(0, 0, T, 3); g.fillStyle = PAL.waterLight; g.fillRect(0, 3, T, 1); }
+  if (side === "bottom") { g.fillStyle = PAL.waterLight; g.fillRect(0, T - 2, T, 2); }
+  if (side === "left") { g.fillStyle = PAL.shore; g.fillRect(0, 0, 2, T); }
+  if (side === "right") { g.fillStyle = PAL.shore; g.fillRect(T - 2, 0, 2, T); }
+  return c;
+}
+function flowerTile(petal, center) {
+  const [c, g] = makeCanvas(T, T);
+  for (const [fx, fy] of [[3, 3], [9, 6], [5, 10]]) {
+    g.fillStyle = PAL.bladeDark; g.fillRect(fx + 1, fy + 2, 1, 2);
+    g.fillStyle = petal; g.fillRect(fx, fy + 1, 3, 1); g.fillRect(fx + 1, fy, 1, 3);
+    g.fillStyle = center; g.fillRect(fx + 1, fy + 1, 1, 1);
+  }
+  return c;
+}
+function mushroomTile() {
+  const [c, g] = makeCanvas(T, T);
+  const fx = 6, fy = 8;
+  g.fillStyle = "#f3e7d2"; g.fillRect(fx + 1, fy + 2, 2, 2);
+  g.fillStyle = "#c9423a"; g.fillRect(fx, fy, 4, 2); g.fillRect(fx + 1, fy - 1, 2, 1);
+  g.fillStyle = "#fff"; g.fillRect(fx + 1, fy, 1, 1);
+  return c;
+}
+function shadowImg() {
+  const [c, g] = makeCanvas(32, 8);
+  g.fillStyle = "rgba(24, 48, 18, 0.28)";
+  g.beginPath(); g.ellipse(16, 4, 16, 4, 0, 0, Math.PI * 2); g.fill();
+  return c;
+}
+function pixels(w, h, rows) {
+  const [c, g] = makeCanvas(w, h);
+  rows.forEach(([x, y, col]) => { g.fillStyle = col; g.fillRect(x, y, 1, 1); });
+  return c;
+}
+
 function makeTree(v) {
   const [c, x] = makeCanvas(34, 48);
   x.fillStyle = PAL.trunk; x.fillRect(14, 30, 6, 16);
@@ -295,22 +338,6 @@ function makeSign() {
   outline(c, "#3a2414");
   return c;
 }
-const SPR = {
-  tree: [makeTree(0), makeTree(0.5), makeTree(0.9)],
-  pine: makePine(),
-  bush: [makeBush(false), makeBush(true)],
-  rock: makeRock(), stump: makeStump(), sign: makeSign()
-};
-export function spriteFor(o) {
-  switch (o.type) {
-    case "tree": return SPR.tree[o.v > 0.85 ? 2 : o.v > 0.5 ? 1 : 0];
-    case "pine": return SPR.pine;
-    case "bush": return SPR.bush[o.v > 0.7 ? 1 : 0];
-    default: return SPR[o.type];
-  }
-}
-export const shadowW = { tree: 13, pine: 10, bush: 8, rock: 6, stump: 6, sign: 5 };
-
 // ---------- 캐릭터 (임시) ----------
 // 플레이어 번호별 색상. 1P는 빨간 셔츠, 2P는 파란 셔츠.
 export const PLAYER_LOOKS = [
@@ -372,10 +399,97 @@ function drawChar(C, dir, f) {
   }
   return c;
 }
+// 캐릭터 시트: 가로 4칸(동작 0~3) × 세로 4줄(아래, 위, 왼쪽, 오른쪽)
 export const DIRS = ["down", "up", "left", "right"];
-// CHAR_FRAMES[slot][dir][frame]  — frame 0~3 (0·2: 서 있음, 1·3: 발 내딛음)
-export const CHAR_FRAMES = PLAYER_LOOKS.map(look => {
-  const out = {};
-  for (const d of DIRS) out[d] = [0, 1, 2, 3].map(f => drawChar(look, d, f));
-  return out;
-});
+function characterSheet(look) {
+  const [c, g] = makeCanvas(16 * 4, 24 * 4);
+  DIRS.forEach((d, row) => { for (let f = 0; f < 4; f++) g.drawImage(drawChar(look, d, f), f * 16, row * 24); });
+  return c;
+}
+
+export function generateDefaultAssets() {
+  const a = {};
+  [1, 2, 3, 4].forEach(i => a[`tiles/grass_${i}`] = grassTile(PAL.grass1, 100 + i * 17));
+  [1, 2].forEach(i => a[`tiles/grass_dark_${i}`] = grassTile(PAL.grass2, 300 + i * 23));
+  [1, 2].forEach(i => a[`tiles/path_${i}`] = pathTile(500 + i * 31));
+  a["tiles/water"] = solidTile(PAL.water);
+  a["tiles/water_deep"] = solidTile(PAL.waterDeep);
+  for (const s of ["top", "bottom", "left", "right"]) {
+    a[`tiles/path_edge_${s}`] = pathEdge(s);
+    a[`tiles/shore_${s}`] = shoreEdge(s);
+  }
+  const fc = { flower_white: ["#fff6f0", "#f3c13a"], flower_pink: ["#f59ab5", "#fff0a0"], flower_purple: ["#b58cf0", "#fff0a0"], flower_yellow: ["#ffd84a", "#e0873a"] };
+  for (const [k, [p, c]] of Object.entries(fc)) a[`decor/${k}`] = flowerTile(p, c);
+  a["decor/mushroom"] = mushroomTile();
+  a["objects/tree_1"] = makeTree(0);
+  a["objects/tree_2"] = makeTree(0.5);
+  a["objects/tree_apple"] = makeTree(0.9);
+  a["objects/pine"] = makePine();
+  a["objects/bush"] = makeBush(false);
+  a["objects/bush_berry"] = makeBush(true);
+  a["objects/rock"] = makeRock();
+  a["objects/stump"] = makeStump();
+  a["objects/sign"] = makeSign();
+  a["characters/player1"] = characterSheet(PLAYER_LOOKS[0]);
+  a["characters/player2"] = characterSheet(PLAYER_LOOKS[1]);
+  a["effects/shadow"] = shadowImg();
+  a["effects/water_sparkle"] = pixels(3, 1, [[0, 0, PAL.waterLight], [1, 0, PAL.waterLight], [2, 0, PAL.waterLight]]);
+  a["effects/leaf_1"] = pixels(2, 2, [[0, 0, PAL.leafHi], [1, 0, PAL.leafHi], [1, 1, PAL.leafHi]]);
+  a["effects/leaf_2"] = pixels(2, 2, [[0, 0, "#e0a94a"], [1, 0, "#e0a94a"], [0, 1, "#e0a94a"]]);
+  return a;
+}
+
+// ---------- 불러온 리소스로 게임 세계 만들기 ----------
+export let ART = {};            // 이름 -> 이미지
+export let groundCanvas = null; // 바닥 전체를 미리 그려 둔 그림
+export const CHAR = [];         // 플레이어별 { sheet, w, h }
+
+export function buildWorld(assets) {
+  ART = assets;
+  const [c, g] = makeCanvas(MW * T, MH * T);
+  const put = (name, px, py) => g.drawImage(ART[name], px, py, T, T);
+
+  for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+    const px = tx * T, py = ty * T, t = ground[idx(tx, ty)];
+    const h = tileHash(tx, ty, 7);
+    if (t === GRASS) {
+      put(darkPatch(tx, ty) ? `tiles/grass_dark_${1 + Math.floor(h * 2)}` : `tiles/grass_${1 + Math.floor(h * 4)}`, px, py);
+    } else if (t === PATH) {
+      put(`tiles/path_${1 + Math.floor(h * 2)}`, px, py);
+    } else {
+      const deep = typeAt(tx, ty - 1) === WATER && typeAt(tx, ty - 2) === WATER && typeAt(tx - 1, ty) === WATER && typeAt(tx + 1, ty) === WATER;
+      put(deep ? "tiles/water_deep" : "tiles/water", px, py);
+    }
+  }
+  // 경계 덮개: 길 옆에 풀이 있으면 풀 가장자리, 물 옆에 땅이 있으면 물가
+  const sides = [["top", 0, -1], ["bottom", 0, 1], ["left", -1, 0], ["right", 1, 0]];
+  for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+    const t = ground[idx(tx, ty)];
+    if (t === GRASS) continue;
+    for (const [s, dx, dy] of sides) {
+      const n = typeAt(tx + dx, ty + dy);
+      if (t === PATH && n === GRASS) put(`tiles/path_edge_${s}`, tx * T, ty * T);
+      if (t === WATER && n !== WATER) put(`tiles/shore_${s}`, tx * T, ty * T);
+    }
+  }
+  // 꽃·버섯
+  for (let i = 0; i < decor.length; i++) if (decor[i]) put(decor[i], (i % MW) * T, Math.floor(i / MW) * T);
+  groundCanvas = c;
+
+  // 캐릭터 시트 자르기 정보 (가로 4칸 × 세로 4줄)
+  CHAR.length = 0;
+  for (const name of ["characters/player1", "characters/player2"]) {
+    const sheet = ART[name];
+    CHAR.push({ sheet, w: Math.floor(sheet.width / 4), h: Math.floor(sheet.height / 4) });
+  }
+}
+
+export function spriteFor(o) {
+  switch (o.type) {
+    case "tree": return ART[o.v > 0.85 ? "objects/tree_apple" : o.v > 0.5 ? "objects/tree_2" : "objects/tree_1"];
+    case "pine": return ART["objects/pine"];
+    case "bush": return ART[o.v > 0.7 ? "objects/bush_berry" : "objects/bush"];
+    default: return ART["objects/" + o.type];
+  }
+}
+export const shadowW = { tree: 13, pine: 10, bush: 8, rock: 6, stump: 6, sign: 5 };

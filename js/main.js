@@ -1,15 +1,16 @@
 import {
-  T, MW, MH, WALK, RUN, PAL, WATER, ground, idx, objects, groundCanvas,
-  spriteFor, shadowW, blocked, spawnFor, CHAR_FRAMES, PLAYER_LOOKS
-} from "./world.js?v=8";
-import { firebaseConfig } from "./firebase-config.js?v=8";
-import { connect, RoomFullError, NotInvitedError } from "./net.js?v=8";
+  T, MW, MH, WALK, RUN, WATER, ground, idx, objects, groundCanvas, ART, CHAR, DIRS,
+  buildWorld, spriteFor, shadowW, blocked, spawnFor, PLAYER_LOOKS
+} from "./world.js?v=9";
+import { loadAssets } from "./assets.js?v=9";
+import { firebaseConfig } from "./firebase-config.js?v=9";
+import { connect, RoomFullError, NotInvitedError } from "./net.js?v=9";
 
 const SEND_INTERVAL = 70;   // 이동 중 위치 전송 간격(ms) ≈ 초당 14회
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DIR_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
-const VERSION = "v8";
+const VERSION = "v9";
 
 // ---------- 화면 만들기 ----------
 // 화면 UI는 여기서 직접 만들어요. index.html이 예전 버전이어도 항상 최신 화면이 나와요.
@@ -76,7 +77,7 @@ if (!document.getElementById("game")) {
 stage.insertAdjacentHTML("beforeend", UI_HTML);
 // 스타일 파일도 최신 버전으로
 document.querySelectorAll('link[rel="stylesheet"]').forEach(l => {
-  if (/(^|\/)style\.css/.test(l.getAttribute("href") || "")) l.href = "style.css?v=8";
+  if (/(^|\/)style\.css/.test(l.getAttribute("href") || "")) l.href = "style.css?v=9";
 });
 
 // ---------- DOM ----------
@@ -425,7 +426,7 @@ resize();
 
 const leaves = Array.from({ length: reduceMotion ? 0 : 14 }, () => ({
   x: Math.random() * 400, y: Math.random() * 300, s: 6 + Math.random() * 10,
-  ph: Math.random() * 6.28, c: Math.random() < 0.5 ? PAL.leafHi : "#e0a94a"
+  ph: Math.random() * 6.28, img: Math.random() < 0.5 ? "effects/leaf_1" : "effects/leaf_2"
 }));
 
 function frameIndex(p) { return p.moving ? Math.floor(p.anim) % 4 : 0; }
@@ -447,11 +448,11 @@ function render(now) {
   // 물 반짝임
   const vx0 = Math.max(0, Math.floor(camX / T)), vy0 = Math.max(0, Math.floor(camY / T));
   const vx1 = Math.min(MW - 1, Math.ceil((camX + viewW) / T)), vy1 = Math.min(MH - 1, Math.ceil((camY + viewH) / T));
-  ctx.fillStyle = PAL.waterLight;
+  const sparkle = ART["effects/water_sparkle"];
   for (let ty = vy0; ty <= vy1; ty++) for (let tx = vx0; tx <= vx1; tx++) {
     if (ground[idx(tx, ty)] !== WATER) continue;
     if (Math.sin(t * 1.6 + tx * 1.7 + ty * 2.3) > 0.55)
-      ctx.fillRect(tx * T + ((tx * 7 + ty * 3) % 9) + 3, ty * T + ((tx * 5 + ty * 11) % 8) + 5, 3, 1);
+      ctx.drawImage(sparkle, tx * T + ((tx * 7 + ty * 3) % 9) + 3, ty * T + ((tx * 5 + ty * 11) % 8) + 5);
   }
 
   // 화면 안 오브젝트 + 플레이어들을 y순으로 정렬해 앞뒤 겹침 처리
@@ -459,14 +460,18 @@ function render(now) {
   const people = [{ x: me.x, y: me.y, slot: me.slot, dir: me.dir, frame: frameIndex(me), name: me.name, self: true }];
   for (const r of remotes.values()) people.push({ x: r.rx, y: r.ry, slot: r.slot, dir: r.dir, frame: frameIndex(r), name: r.name });
 
-  ctx.fillStyle = PAL.shadow;
-  for (const o of list) { ctx.beginPath(); ctx.ellipse(o.x, o.y - 2, shadowW[o.type], 3, 0, 0, Math.PI * 2); ctx.fill(); }
-  for (const p of people) { ctx.beginPath(); ctx.ellipse(p.x, p.y - 1, 5, 2, 0, 0, Math.PI * 2); ctx.fill(); }
+  // 그림자 (effects/shadow.png를 크기에 맞게 늘려서 사용)
+  const shadow = ART["effects/shadow"];
+  for (const o of list) { const w = shadowW[o.type]; ctx.drawImage(shadow, o.x - w, o.y - 5, w * 2, 6); }
+  for (const p of people) ctx.drawImage(shadow, p.x - 5, p.y - 3, 10, 4);
 
   const drawables = [...list, ...people.map(p => ({ ...p, type: "player" }))].sort((a, b) => a.y - b.y);
   for (const o of drawables) {
     if (o.type === "player") {
-      ctx.drawImage(CHAR_FRAMES[o.slot][o.dir][o.frame], Math.round(o.x - 8), Math.round(o.y - 23));
+      // 캐릭터 시트에서 (동작 칸, 방향 줄)을 잘라 발밑이 위치에 오도록 그림
+      const ch = CHAR[o.slot];
+      ctx.drawImage(ch.sheet, o.frame * ch.w, DIRS.indexOf(o.dir) * ch.h, ch.w, ch.h,
+        Math.round(o.x - ch.w / 2), Math.round(o.y - ch.h + 1), ch.w, ch.h);
     } else {
       const s = spriteFor(o);
       const sway = (o.type === "tree" || o.type === "pine") && !reduceMotion ? Math.round(Math.sin(t * 0.9 + o.tx * 0.7) * 0.6) : 0;
@@ -480,7 +485,7 @@ function render(now) {
     ctx.font = `${Math.round(13 * dpr)}px "Do Hyeon", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const p of people) {
-      const sx = (p.x - camX) * scale, sy = (p.y - 27 - camY) * scale;
+      const sx = (p.x - camX) * scale, sy = (p.y - CHAR[p.slot].h - 3 - camY) * scale;
       const label = p.self ? `${p.name} (나)` : p.name;
       const w = ctx.measureText(label).width + 12 * dpr, h = 18 * dpr;
       ctx.fillStyle = "rgba(243, 227, 195, 0.92)";
@@ -498,13 +503,13 @@ function render(now) {
     l.y += l.s * 0.016; l.x += Math.sin(t + l.ph) * 0.25 + 0.1;
     if (l.y > viewH + 4) { l.y = -4; l.x = Math.random() * viewW; }
     if (l.x > viewW + 4) l.x = -4;
-    ctx.fillStyle = l.c;
-    ctx.fillRect(Math.round(l.x), Math.round(l.y), 2, 1);
-    ctx.fillRect(Math.round(l.x) + (Math.sin(t * 3 + l.ph) > 0 ? 1 : 0), Math.round(l.y) + 1, 1, 1);
+    ctx.drawImage(ART[l.img], Math.round(l.x), Math.round(l.y));
   }
 }
 
 // ---------- 게임 루프 ----------
+// 그래픽 리소스(assets 폴더)를 모두 불러온 뒤 시작
+buildWorld(await loadAssets());
 let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);

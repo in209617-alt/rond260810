@@ -10,7 +10,9 @@ GitHub Pages에서 실행되고, 두 사람이 같은 숲에서 서로의 캐릭
 | --- | --- |
 | `index.html` | 화면 틀 (로비, HUD, 모바일 버튼) |
 | `style.css` | 스타일 |
-| `js/world.js` | 맵 생성, 충돌 판정, 나무·캐릭터 도트 그림 |
+| `js/world.js` | 맵 생성, 충돌 판정, 바닥 그리기, 기본 그림 |
+| `js/assets.js` | `assets/` 폴더의 그래픽 PNG 불러오기 |
+| `assets/` | **게임 그래픽 파일** (교체 방법은 `ASSETS.md`) |
 | `js/main.js` | 게임 루프, 입력, 화면 그리기, 상대 플레이어 보간 |
 | `js/net.js` | Firebase 연결 (Google 로그인, 방 입장, 위치 전송·수신) |
 | `js/firebase-config.js` | **내 Firebase 프로젝트 값을 넣는 곳** |
