@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&display=swap">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <div class="stage" id="stage">
@@ -17,6 +17,8 @@
       <div class="chip" id="status" data-tone="info">숲 입구</div>
       <ul class="chip roster" id="roster" aria-label="접속한 플레이어"></ul>
       <button class="chip invite" id="invite" type="button" hidden>초대 링크 복사</button>
+      <button class="chip invite" id="info-btn" type="button" hidden aria-expanded="false">접속 정보</button>
+      <div class="chip info" id="info" hidden></div>
     </div>
     <div class="help chip"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동 · <kbd>Shift</kbd> 달리기</div>
 
@@ -59,11 +61,11 @@
           <button id="join-btn" type="submit">숲으로 들어가기</button>
         </fieldset>
         <p class="msg" id="lobby-msg" role="status"></p>
-        <p class="ver">버전 v6 · Google 로그인</p>
+        <p class="ver">버전 v7 · Google 로그인</p>
       </form>
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=6"></script>
+  <script type="module" src="js/main.js?v=7"></script>
 </body>
 </html>

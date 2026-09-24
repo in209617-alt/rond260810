@@ -1,9 +1,9 @@
 import {
   T, MW, MH, WALK, RUN, PAL, WATER, ground, idx, objects, groundCanvas,
   spriteFor, shadowW, blocked, spawnFor, CHAR_FRAMES, PLAYER_LOOKS
-} from "./world.js?v=6";
-import { firebaseConfig } from "./firebase-config.js?v=6";
-import { connect, RoomFullError, NotInvitedError } from "./net.js?v=6";
+} from "./world.js?v=7";
+import { firebaseConfig } from "./firebase-config.js?v=7";
+import { connect, RoomFullError, NotInvitedError } from "./net.js?v=7";
 
 const SEND_INTERVAL = 70;   // 이동 중 위치 전송 간격(ms) ≈ 초당 14회
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -16,6 +16,7 @@ const lobby = $("lobby"), joinForm = $("join-form"), nameInput = $("name"), room
 const joinBtn = $("join-btn"), lobbyMsg = $("lobby-msg"), joinFields = $("join-fields");
 const authBox = $("auth-box"), loginBtn = $("login-btn"), whoEl = $("who"), whoEmail = $("who-email"), logoutBtn = $("logout-btn");
 const statusEl = $("status"), rosterEl = $("roster"), inviteBtn = $("invite");
+const infoBtn = $("info-btn"), infoEl = $("info");
 
 // ---------- 상태 ----------
 const me = {
@@ -23,7 +24,7 @@ const me = {
 };
 Object.assign(me, spawnFor(0));
 const remotes = new Map(); // 자리 번호("0"/"1") -> 원격 플레이어
-let net = null, user = null, roomName = "", playing = false, connected = true;
+let net = null, user = null, roomName = "", playing = false, connected = true, seatedUid = null;
 
 // ---------- 로비 ----------
 const params = new URLSearchParams(location.search);
@@ -82,6 +83,12 @@ if (!online) {
     net = n;
     authBox.hidden = false;
     net.onAuth(u => {
+      // 게임 중에 로그인 계정이 바뀌거나 로그아웃되면 더 이상 내 캐릭터를 움직일 수 없어요
+      if (playing && seatedUid && (!u || u.uid !== seatedUid)) {
+        net.leave();
+        net = null;
+        setStatus("로그인 계정이 바뀌어서 방에서 나왔어요. 새로고침해 주세요.", "warn");
+      }
       user = u;
       if (u && !nameInput.value) nameInput.value = (u.displayName || "").trim().slice(0, 12);
       renderAuth();
@@ -134,16 +141,18 @@ joinForm.addEventListener("submit", async e => {
       onKicked: () => setStatus("다시 연결했지만 방이 가득 찼어요. 새로고침해 주세요.", "warn")
     });
     roomName = room;
+    seatedUid = res.uid;
     me.slot = res.slot;
     Object.assign(me, res.start);
     history.replaceState(null, "", `?room=${encodeURIComponent(room)}`);
     startGame();
     setStatus(`방 ${room} · 연결됨`, "ok");
     inviteBtn.hidden = false;
+    infoBtn.hidden = false;
     renderRoster();
   } catch (err) {
     console.error(err);
-    if (err instanceof RoomFullError) say("이 방에는 이미 두 명이 있어요. 다른 방 이름을 입력해 주세요.", "warn");
+    if (err instanceof RoomFullError) say("이 방에는 이미 두 명이 있어요. 방금 나갔다면 20초 뒤에 다시 들어와 보세요.", "warn");
     else if (err instanceof NotInvitedError) say(`${user.email} 계정은 초대 목록에 없어요. 게임 주인에게 이 이메일을 등록해 달라고 부탁해 주세요.`, "warn");
     else say("숲에 들어가지 못했어요. 잠시 후 다시 시도해 주세요.", "warn");
   } finally {
@@ -169,6 +178,38 @@ inviteBtn.addEventListener("click", async () => {
 });
 
 addEventListener("pagehide", () => net?.leave());
+
+// ---------- 접속 정보 (문제 확인용) ----------
+infoBtn.addEventListener("click", () => {
+  infoEl.hidden = !infoEl.hidden;
+  infoBtn.setAttribute("aria-expanded", String(!infoEl.hidden));
+  renderInfo();
+});
+function renderInfo() {
+  if (infoEl.hidden || !net) return;
+  const rows = net.debugInfo().map(d => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const left = document.createElement("span");
+    const right = document.createElement("span");
+    left.innerHTML = `<b>${Number(d.slot) + 1}P</b> `;
+    if (d.empty) {
+      left.append("빈자리");
+      right.className = "dim";
+    } else {
+      left.append(`${d.name}${d.mine ? " (나)" : d.sameAccount ? " (내 계정)" : ""}`);
+      right.textContent = d.stale ? `신호 끊김 · ${d.age}초 전` : `${d.age}초 전 신호`;
+      right.className = d.stale ? "bad" : "dim";
+    }
+    row.append(left, right);
+    return row;
+  });
+  const foot = document.createElement("div");
+  foot.className = "dim";
+  foot.textContent = `방 ${roomName} · ${connected ? "서버 연결됨" : "서버 연결 끊김"} · 화면에 보이는 친구 ${remotes.size}명`;
+  infoEl.replaceChildren(...rows, foot);
+}
+setInterval(renderInfo, 1000);
 
 // ---------- 원격 플레이어 ----------
 function upsertRemote(id, p, isNew) {
