@@ -18,6 +18,7 @@
             "moving": { ".validate": "newData.isBoolean()" },
             "running": { ".validate": "newData.isBoolean()" },
             "t": { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "look": { ".validate": "newData.isString() && newData.val().length <= 80" },
             "$other": { ".validate": false }
           }
         }

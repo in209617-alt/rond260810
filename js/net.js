@@ -47,6 +47,7 @@ export async function connect(firebaseConfig) {
   const isStale = p => !p || typeof p.t !== "number" || serverNow() - p.t > STALE_MS;
 
   let meRef = null, mySlot = null, myUid = null, lastState = null;
+  let lastLook = null, lookWarned = false;
   let latest = {};
   let heartbeat = null, recheck = null;
   const unsubs = [];
@@ -154,6 +155,7 @@ export async function connect(firebaseConfig) {
         try {
           await set(meRef, { ...lastState, t: serverTimestamp() });
           await onDisconnect(meRef).remove();
+          if (lastLook) sendLook(lastLook);
           log("재연결 후 자리 복구");
         } catch (e) {
           handlers.onKicked?.();
@@ -178,6 +180,18 @@ export async function connect(firebaseConfig) {
     update(meRef, patch).catch(e => log("위치 전송 실패", e.code || e.message));
   }
 
+  // 옷차림 보내기. 위치와 따로 보내서, 보안 규칙에 look이 없어도 이동에는 영향이 없어요
+  function sendLook(look) {
+    lastLook = look;
+    if (!meRef) return;
+    update(meRef, { look }).catch(e => {
+      if (!lookWarned) {
+        lookWarned = true;
+        console.warn("[forest] 옷차림을 보내지 못했어요. Firebase 보안 규칙에 look 줄을 추가해 주세요.", e.code || e.message);
+      }
+    });
+  }
+
   function leave() {
     clearInterval(heartbeat); clearInterval(recheck);
     unsubs.forEach(u => u());
@@ -198,5 +212,5 @@ export async function connect(firebaseConfig) {
     });
   }
 
-  return { onAuth, signIn, signOut, join, send, leave, debugInfo, get uid() { return auth.currentUser?.uid || null; } };
+  return { onAuth, signIn, signOut, join, send, sendLook, leave, debugInfo, get uid() { return auth.currentUser?.uid || null; } };
 }

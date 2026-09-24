@@ -484,11 +484,21 @@ export function buildWorld(assets) {
   }
 }
 
+// 사과나무·베리 덤불: 열매 개수(fruit)가 0이 되면 열매 없는 그림으로 바뀌어요
+for (const o of objects) {
+  if ((o.type === "tree" && o.v > 0.85) || (o.type === "bush" && o.v > 0.7)) {
+    o.fruitMax = 3;
+    o.fruit = 3;
+  }
+}
+
 export function spriteFor(o) {
   switch (o.type) {
-    case "tree": return ART[o.v > 0.85 ? "objects/tree_apple" : o.v > 0.5 ? "objects/tree_2" : "objects/tree_1"];
+    case "tree":
+      if (o.fruitMax) return ART[o.fruit > 0 ? "objects/tree_apple" : "objects/tree_2"];
+      return ART[o.v > 0.5 ? "objects/tree_2" : "objects/tree_1"];
     case "pine": return ART["objects/pine"];
-    case "bush": return ART[o.v > 0.7 ? "objects/bush_berry" : "objects/bush"];
+    case "bush": return ART[o.fruitMax && o.fruit > 0 ? "objects/bush_berry" : "objects/bush"];
     default: return ART["objects/" + o.type];
   }
 }

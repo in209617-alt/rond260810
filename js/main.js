@@ -1,16 +1,20 @@
 import {
   T, MW, MH, WALK, RUN, WATER, ground, idx, objects, groundCanvas, ART, CHAR, DIRS,
   buildWorld, spriteFor, shadowW, blocked, spawnFor, PLAYER_LOOKS
-} from "./world.js?v=9";
-import { loadAssets } from "./assets.js?v=9";
-import { firebaseConfig } from "./firebase-config.js?v=9";
-import { connect, RoomFullError, NotInvitedError } from "./net.js?v=9";
+} from "./world.js?v=10";
+import { loadAssets } from "./assets.js?v=10";
+import { firebaseConfig } from "./firebase-config.js?v=10";
+import { connect, RoomFullError, NotInvitedError } from "./net.js?v=10";
+import { ITEMS, GATHER, DRAW_ORDER, josa } from "./items.js?v=10";
+import { Inventory, parseLook } from "./inventory.js?v=10";
+import { createUI } from "./ui.js?v=10";
+import { eatBurst, leafBurst, poof, floatText, updateEffects, drawParticles, drawFloaters, sfx } from "./effects.js?v=10";
 
 const SEND_INTERVAL = 70;   // 이동 중 위치 전송 간격(ms) ≈ 초당 14회
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DIR_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
-const VERSION = "v9";
+const VERSION = "v10";
 
 // ---------- 화면 만들기 ----------
 // 화면 UI는 여기서 직접 만들어요. index.html이 예전 버전이어도 항상 최신 화면이 나와요.
@@ -22,7 +26,7 @@ const UI_HTML = `
   <button class="chip invite" id="info-btn" type="button" hidden aria-expanded="false">접속 정보</button>
   <div class="chip info" id="info" hidden></div>
 </div>
-<div class="help chip"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동 · <kbd>Shift</kbd> 달리기</div>
+<div class="help chip" id="help" hidden><kbd>WASD</kbd> 이동 · <kbd>Shift</kbd> 달리기 · <kbd>E</kbd> 가방 · <kbd>1</kbd>~<kbd>0</kbd> 선택 · <kbd>Q</kbd> 버리기 · 클릭 채집</div>
 
 <div class="pad" id="pad">
   <button type="button" data-d="up" aria-label="위로">▲</button>
@@ -34,7 +38,7 @@ const UI_HTML = `
 
 <div class="lobby" id="lobby">
   <form class="card" id="join-form" autocomplete="off">
-    <h1>초록 숲</h1>
+    <h1>낑냐마을</h1>
     <p class="sub">친구와 둘이서 같은 숲을 걸어요</p>
 
     <p class="inapp" id="inapp" hidden>
@@ -77,8 +81,11 @@ if (!document.getElementById("game")) {
 stage.insertAdjacentHTML("beforeend", UI_HTML);
 // 스타일 파일도 최신 버전으로
 document.querySelectorAll('link[rel="stylesheet"]').forEach(l => {
-  if (/(^|\/)style\.css/.test(l.getAttribute("href") || "")) l.href = "style.css?v=9";
+  if (/(^|\/)style\.css/.test(l.getAttribute("href") || "")) l.href = "style.css?v=10";
 });
+
+// 그래픽 리소스(assets 폴더)를 모두 불러온 뒤 시작
+buildWorld(await loadAssets());
 
 // ---------- DOM ----------
 const $ = id => document.getElementById(id);
@@ -104,6 +111,8 @@ const me = {
 Object.assign(me, spawnFor(0));
 const remotes = new Map(); // 자리 번호("0"/"1") -> 원격 플레이어
 let net = null, user = null, roomName = "", playing = false, connected = true, seatedUid = null;
+me.eatT = 0;
+const inv = new Inventory();
 
 // ---------- 로비 ----------
 const params = new URLSearchParams(location.search);
@@ -242,6 +251,10 @@ joinForm.addEventListener("submit", async e => {
 function startGame() {
   playing = true;
   lobby.hidden = true;
+  inv.load(seatedUid || "local");   // 인벤토리는 이 브라우저에 계정별로 저장돼요
+  ui.setVisible(true);
+  $("help").hidden = false;
+  net?.sendLook(inv.look());
   canvas.focus({ preventScroll: true });
 }
 
@@ -304,6 +317,7 @@ function upsertRemote(id, p, isNew) {
   r.dir = DIR_VEC[p.dir] ? p.dir : "down";
   r.moving = !!p.moving;
   r.running = !!p.running;
+  r.look = parseLook(p.look);
   r.lastPacket = performance.now();
   renderRoster();
 }
@@ -357,9 +371,16 @@ const typing = e => e.target instanceof HTMLInputElement;
 
 addEventListener("keydown", e => {
   if (!playing || typing(e)) return;
-  const d = keyDir[e.code]; // e.code라서 한글 입력 상태에서도 동작
+  // e.code를 써서 한글 입력 상태에서도 동작
+  if (e.key === "Escape") { ui.closeAll(); return; }
+  if (e.code === "KeyE" || e.code === "KeyI") { e.preventDefault(); ui.toggleBag(); return; }
+  if (ui.isOpen()) return;
+  const d = keyDir[e.code];
   if (d) { e.preventDefault(); if (!e.repeat) press(d); }
   if (e.key === "Shift") shift = true;
+  const num = /^Digit(\d)$/.exec(e.code);
+  if (num) { ui.select((Number(num[1]) + 9) % 10); return; }
+  if (e.code === "KeyQ" && !e.repeat) dropSelected();
 });
 addEventListener("keyup", e => {
   const d = keyDir[e.code];
@@ -382,7 +403,8 @@ $("run").addEventListener("pointerdown", e => {
 // ---------- 내 캐릭터 이동 ----------
 let lastSend = 0;
 function updateMe(dt, now) {
-  const d = playing ? held[held.length - 1] : null;
+  me.eatT = Math.max(0, me.eatT - dt);
+  const d = playing && !ui.isOpen() ? held[held.length - 1] : null;
   me.moving = !!d;
   me.running = me.moving && (shift || touchRun);
   if (d) {
@@ -431,6 +453,29 @@ const leaves = Array.from({ length: reduceMotion ? 0 : 14 }, () => ({
 
 function frameIndex(p) { return p.moving ? Math.floor(p.anim) % 4 : 0; }
 
+// 캐릭터 + 입은 옷 그리기. (x, y) = 발밑 위치
+// 옷 그림(assets/equipment/*.png)은 캐릭터 시트와 같은 4×4 배치라서 같은 칸을 잘라 겹쳐 그려요.
+function drawCharacter(g, slot, dir, frame, x, y, look) {
+  const ch = CHAR[slot], row = DIRS.indexOf(dir);
+  g.drawImage(ch.sheet, frame * ch.w, row * ch.h, ch.w, ch.h, Math.round(x - ch.w / 2), Math.round(y - ch.h + 1), ch.w, ch.h);
+  for (const key of DRAW_ORDER) {
+    const img = look && look[key] ? ART["equipment/" + look[key]] : null;
+    if (!img) continue;
+    const w = Math.floor(img.width / 4), h = Math.floor(img.height / 4);
+    g.drawImage(img, frame * w, row * h, w, h, Math.round(x - w / 2), Math.round(y - h + 1), w, h);
+  }
+}
+
+// 가방 화면의 캐릭터 미리보기
+function drawPreview(cv, dirIndex) {
+  const ch = CHAR[me.slot];
+  if (cv.width !== ch.w || cv.height !== ch.h) { cv.width = ch.w; cv.height = ch.h; }
+  const g = cv.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, cv.width, cv.height);
+  drawCharacter(g, me.slot, DIRS[dirIndex], 0, ch.w / 2, ch.h - 1, inv.equip);
+}
+
 function render(now) {
   const t = now / 1000;
   const mapW = MW * T, mapH = MH * T;
@@ -438,6 +483,7 @@ function render(now) {
   camX = viewW >= mapW ? (mapW - viewW) / 2 : Math.max(0, Math.min(mapW - viewW, camX));
   camY = viewH >= mapH ? (mapH - viewH) / 2 : Math.max(0, Math.min(mapH - viewH, camY));
   camX = Math.round(camX * scale) / scale; camY = Math.round(camY * scale) / scale;
+  cam.x = camX; cam.y = camY;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#2d6436"; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -457,8 +503,9 @@ function render(now) {
 
   // 화면 안 오브젝트 + 플레이어들을 y순으로 정렬해 앞뒤 겹침 처리
   const list = objects.filter(o => o.x > camX - 48 && o.x < camX + viewW + 48 && o.y > camY - 8 && o.y < camY + viewH + 60);
-  const people = [{ x: me.x, y: me.y, slot: me.slot, dir: me.dir, frame: frameIndex(me), name: me.name, self: true }];
-  for (const r of remotes.values()) people.push({ x: r.rx, y: r.ry, slot: r.slot, dir: r.dir, frame: frameIndex(r), name: r.name });
+  const hop = me.eatT > 0 ? -Math.round(Math.abs(Math.sin(me.eatT * 22))) : 0; // 먹을 때 통통
+  const people = [{ x: me.x, y: me.y, hop, slot: me.slot, dir: me.dir, frame: frameIndex(me), name: me.name, self: true, look: inv.equip }];
+  for (const r of remotes.values()) people.push({ x: r.rx, y: r.ry, hop: 0, slot: r.slot, dir: r.dir, frame: frameIndex(r), name: r.name, look: r.look });
 
   // 그림자 (effects/shadow.png를 크기에 맞게 늘려서 사용)
   const shadow = ART["effects/shadow"];
@@ -469,23 +516,36 @@ function render(now) {
   for (const o of drawables) {
     if (o.type === "player") {
       // 캐릭터 시트에서 (동작 칸, 방향 줄)을 잘라 발밑이 위치에 오도록 그림
-      const ch = CHAR[o.slot];
-      ctx.drawImage(ch.sheet, o.frame * ch.w, DIRS.indexOf(o.dir) * ch.h, ch.w, ch.h,
-        Math.round(o.x - ch.w / 2), Math.round(o.y - ch.h + 1), ch.w, ch.h);
+      drawCharacter(ctx, o.slot, o.dir, o.frame, o.x, o.y + o.hop, o.look);
     } else {
       const s = spriteFor(o);
-      const sway = (o.type === "tree" || o.type === "pine") && !reduceMotion ? Math.round(Math.sin(t * 0.9 + o.tx * 0.7) * 0.6) : 0;
+      let sway = (o.type === "tree" || o.type === "pine") && !reduceMotion ? Math.round(Math.sin(t * 0.9 + o.tx * 0.7) * 0.6) : 0;
+      if (o.shakeT > 0) sway += Math.round(Math.sin(o.shakeT * 50));   // 채집할 때 흔들림
       ctx.drawImage(s, Math.round(o.x - s.width / 2) + sway, Math.round(o.y - s.height + 1));
     }
   }
 
+  drawParticles(ctx);
+
   // 이름표 (화면 픽셀 좌표로 그려서 글자가 선명하게)
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const toScreen = (x, y) => [(x - camX) * scale, (y - camY) * scale];
+  // 가까이 가면 표지판 위에 "상점" 표시
+  for (const o of list) {
+    if (o.type !== "sign" || Math.hypot(me.x - o.x, me.y - o.y) > GATHER.reach * 2) continue;
+    const [sx, sy] = toScreen(o.x, o.y - 22);
+    ctx.font = `${Math.round(13 * dpr)}px "Do Hyeon", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const w = ctx.measureText("상점").width + 14 * dpr, h = 18 * dpr, bob = Math.sin(t * 3) * 2 * dpr;
+    ctx.fillStyle = "#fff8e8"; ctx.strokeStyle = "#8a5a33"; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.roundRect(sx - w / 2, sy - h / 2 + bob, w, h, 5 * dpr); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#3b2a1e"; ctx.fillText("상점", sx, sy + bob);
+  }
   if (online || remotes.size) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.font = `${Math.round(13 * dpr)}px "Do Hyeon", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const p of people) {
-      const sx = (p.x - camX) * scale, sy = (p.y - CHAR[p.slot].h - 3 - camY) * scale;
+      const sx = (p.x - camX) * scale, sy = (p.y - CHAR[p.slot].h + 5 - camY) * scale;
       const label = p.self ? `${p.name} (나)` : p.name;
       const w = ctx.measureText(label).width + 12 * dpr, h = 18 * dpr;
       ctx.fillStyle = "rgba(243, 227, 195, 0.92)";
@@ -497,6 +557,8 @@ function render(now) {
     }
   }
 
+  drawFloaters(ctx, toScreen, dpr);
+
   // 떨어지는 나뭇잎
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   for (const l of leaves) {
@@ -507,15 +569,158 @@ function render(now) {
   }
 }
 
+// ---------- 인벤토리 · 가방 · 상점 화면 ----------
+const cam = { x: 0, y: 0 };
+const ui = createUI({
+  root: stage,
+  inv,
+  art: name => ART[name] || null,
+  drawPreview,
+  onUse: i => useSlot(i),
+  onOpenChange: open => {
+    if (open) { held = []; shift = false; document.querySelectorAll("#pad button").forEach(b => b.classList.remove("on")); }
+  }
+});
+ui.setVisible(false);
+
+// 옷차림이 바뀌면 친구에게도 알려 줘요
+let sentLook = "";
+inv.onChange(() => {
+  const look = inv.look();
+  if (look !== sentLook && playing) { sentLook = look; net?.sendLook(look); }
+});
+
+// ---------- 아이템 사용 ----------
+function useSlot(i) {
+  const s = inv.slots[i];
+  if (!s) return false;
+  const it = ITEMS[s.id];
+  if (it.kind === "food") {
+    inv.removeAt(i, 1);
+    me.eatT = 0.45;
+    eatBurst(me.x, me.y, it.color);
+    sfx.eat();
+    ui.toast(`${josa(it.name, "을", "를")} 먹었다!`);
+    return true;
+  }
+  if (it.kind === "wear") return ui.wearFromSlot(i);
+  return false;
+}
+
+function dropSelected() {
+  const i = ui.selected;
+  const s = i >= 0 ? inv.slots[i] : null;
+  if (!s) { ui.toast("버릴 아이템을 먼저 골라 주세요"); return; }
+  inv.removeAt(i, 1);
+  poof(me.x, me.y);
+  sfx.trash();
+  ui.toast(`${josa(ITEMS[s.id].name, "을", "를")} 버렸다`);
+}
+
+// ---------- 채집 · 상점 (화면 클릭/탭) ----------
+for (const o of objects) if (o.fruitMax) { o.fruitMax = GATHER.fruitMax; o.fruit = GATHER.fruitMax; }
+const fruitObjects = objects.filter(o => o.fruitMax);
+
+function isInteractive(o) {
+  return o.type === "bush" || o.type === "sign" || (o.type === "tree" && o.fruitMax);
+}
+// 화면 좌표 → 세계 좌표
+function worldPoint(e) {
+  const r = canvas.getBoundingClientRect();
+  return [cam.x + (e.clientX - r.left) * dpr / scale, cam.y + (e.clientY - r.top) * dpr / scale];
+}
+// 누른 위치에 있는 채집 가능한 오브젝트 (여럿이면 앞쪽 것)
+function objectAt(wx, wy) {
+  let best = null;
+  for (const o of objects) {
+    if (!isInteractive(o)) continue;
+    const s = spriteFor(o);
+    const x0 = o.x - s.width / 2, y0 = o.y - s.height + 1;
+    if (wx >= x0 && wx <= x0 + s.width && wy >= y0 && wy <= o.y + 1 && (!best || o.y > best.y)) best = o;
+  }
+  return best;
+}
+function faceTowards(x, y) {
+  const dx = x - me.x, dy = y - me.y;
+  me.dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? "left" : "right") : (dy < 0 ? "up" : "down");
+}
+
+function giveItem(id, fromX, fromY) {
+  if (inv.roomFor(id) < 1) { ui.toast("가방이 가득 찼어요", "warn"); sfx.miss(); return false; }
+  inv.add(id, 1);
+  sfx.pickup();
+  floatText(fromX, fromY, `+1 ${ITEMS[id].name}`, "#fff8e8", "#3b2a1e", ART["items/" + id]);
+  ui.toast(`${josa(ITEMS[id].name, "을", "를")} 얻었다!`);
+  return true;
+}
+
+function interact(o, now) {
+  faceTowards(o.x, o.y);
+  const top = o.y - spriteFor(o).height + 4;
+  if (o.type === "sign") { ui.openShop(); return; }
+  o.shakeT = 0.3;
+  leafBurst(o.x, o.y - 8);
+  if (o.fruitMax) {
+    if (o.fruit > 0) {
+      const id = o.type === "tree" ? "apple" : "berry";
+      if (giveItem(id, o.x, top)) {
+        o.fruit--;
+        if (!o.regrowAt) o.regrowAt = now + GATHER.regrowMs;
+      }
+      return;
+    }
+    if (o.type === "tree") { floatText(o.x, top, "사과가 아직 없어요", "#fff8e8", "#7a5a3e"); sfx.miss(); return; }
+  }
+  // 열매 없는 덤불: 일정 확률로 잡초
+  if (o.searchedAt && now - o.searchedAt < GATHER.bushCooldown) { floatText(o.x, top, "…", "#fff8e8", "#7a5a3e"); return; }
+  o.searchedAt = now;
+  if (Math.random() < GATHER.weedChance) giveItem("weed", o.x, top);
+  else { floatText(o.x, top, "아무것도 없었다", "#fff8e8", "#7a5a3e"); sfx.miss(); }
+}
+
+canvas.addEventListener("pointerdown", e => {
+  if (!playing || ui.isOpen()) return;
+  const [wx, wy] = worldPoint(e);
+  const o = objectAt(wx, wy);
+  const now = performance.now();
+  if (o) {
+    if (Math.hypot(me.x - o.x, me.y - o.y) > GATHER.reach) {
+      floatText(o.x, o.y - spriteFor(o).height + 4, "더 가까이 가 주세요", "#fff8e8", "#7a5a3e");
+      return;
+    }
+    interact(o, now);
+    return;
+  }
+  // 오브젝트가 없는 곳을 누르면: 고른 아이템 사용
+  if (ui.selected >= 0 && inv.slots[ui.selected]) useSlot(ui.selected);
+});
+canvas.addEventListener("pointermove", e => {
+  if (!playing || e.pointerType === "touch") return;
+  const [wx, wy] = worldPoint(e);
+  const o = objectAt(wx, wy);
+  canvas.style.cursor = o ? "pointer" : (ui.selected >= 0 && inv.slots[ui.selected] ? "cell" : "default");
+});
+
+function updateWorld(dt, now) {
+  for (const o of objects) if (o.shakeT > 0) o.shakeT -= dt;
+  for (const o of fruitObjects) {
+    if (o.regrowAt && now >= o.regrowAt) {
+      o.fruit = Math.min(o.fruitMax, o.fruit + 1);
+      o.regrowAt = o.fruit < o.fruitMax ? now + GATHER.regrowMs : null;
+    }
+  }
+}
+
 // ---------- 게임 루프 ----------
-// 그래픽 리소스(assets 폴더)를 모두 불러온 뒤 시작
-buildWorld(await loadAssets());
 let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   updateMe(dt, now);
   for (const r of remotes.values()) updateRemote(r, dt, now);
+  updateWorld(dt, now);
+  updateEffects(dt);
+  ui.tickPreview(dt);
   render(now);
   requestAnimationFrame(loop);
 }
@@ -524,5 +729,6 @@ requestAnimationFrame(loop);
 // 개발용: 브라우저 콘솔에서 가짜 2P를 띄워 화면을 확인할 수 있어요
 // 예) __forest.fakeRemote({ x: 470, y: 414, dir: "left", moving: true })
 window.__forest = {
-  fakeRemote(p) { upsertRemote("fake", { name: "테스트", slot: 1, dir: "down", moving: false, ...p }, !remotes.has("fake")); }
+  fakeRemote(p) { upsertRemote("fake", { name: "테스트", slot: 1, dir: "down", moving: false, ...p }, !remotes.has("fake")); },
+  me, inv, objects, cam: () => ({ ...cam, scale, dpr })
 };
