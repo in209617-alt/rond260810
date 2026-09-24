@@ -1,9 +1,9 @@
 import {
   T, MW, MH, WALK, RUN, PAL, WATER, ground, idx, objects, groundCanvas,
   spriteFor, shadowW, blocked, spawnFor, CHAR_FRAMES, PLAYER_LOOKS
-} from "./world.js";
-import { firebaseConfig } from "./firebase-config.js";
-import { connect, RoomFullError, NotInvitedError } from "./net.js";
+} from "./world.js?v=6";
+import { firebaseConfig } from "./firebase-config.js?v=6";
+import { connect, RoomFullError, NotInvitedError } from "./net.js?v=6";
 
 const SEND_INTERVAL = 70;   // 이동 중 위치 전송 간격(ms) ≈ 초당 14회
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -89,7 +89,7 @@ if (!online) {
     });
   }).catch(err => {
     console.error(err);
-    say("Firebase를 불러오지 못했어요. 인터넷 연결과 firebase-config.js 값을 확인해 주세요.", "warn");
+    say(`Firebase를 불러오지 못했어요. 인터넷 연결과 firebase-config.js 값을 확인해 주세요. (${err.code || err.message})`, "warn");
   });
 }
 
