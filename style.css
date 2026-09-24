@@ -410,16 +410,16 @@ button { -webkit-tap-highlight-color: transparent; }
 
 /* 1:1 대화창 (비주얼노벨 스타일) */
 .talk-modal { z-index: 25; }
-.talk-panel { width: min(760px, 100%); }
+.talk-panel { width: min(940px, 100%); }
 .talk-scene {
-  position: relative; aspect-ratio: 16 / 10; max-height: 60vh; width: 100%;
+  position: relative; aspect-ratio: 16 / 10; max-height: min(68vh, calc(100vh - 270px)); min-height: 220px; width: 100%;
   border: 3px solid var(--panel-edge); border-radius: 10px; overflow: hidden;
   background:
     radial-gradient(ellipse at 50% 120%, rgba(255, 240, 200, .5), transparent 60%),
     linear-gradient(#9fd0e8 0%, #cde9c4 55%, #7cb342 56%, #5f9a39 100%);
 }
 .portrait {
-  position: absolute; bottom: 12%; width: 49%; height: 88%;
+  position: absolute; bottom: 0; width: 50%; height: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
   transition: filter .25s, transform .25s;
 }
@@ -427,7 +427,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .portrait.right { right: 0; }
 .portrait img, .portrait canvas { max-width: 100%; max-height: 100%; object-fit: contain; object-position: bottom; }
 /* 프로필 없을 때의 도트 캐릭터: 크게, 얼굴이 대사 상자 위로 오도록 */
-.portrait canvas.pixel { height: 100%; width: auto; max-width: 100%; object-fit: contain; image-rendering: pixelated; }
+.portrait canvas.pixel { margin-bottom: 9%; height: 66%; width: auto; max-width: 100%; object-fit: contain; image-rendering: pixelated; }
 .portrait.dim { filter: brightness(.45) saturate(.7); }
 .portrait.speaking { transform: translateY(-2%) scale(1.03); }
 .portrait-name {
@@ -435,7 +435,7 @@ button { -webkit-tap-highlight-color: transparent; }
   padding: 1px 8px; border-radius: 6px;
 }
 .talk-box {
-  position: absolute; left: 3%; right: 3%; bottom: 3%; min-height: 21%; z-index: 2;
+  position: absolute; left: 3%; right: 3%; bottom: 3%; min-height: 19%; z-index: 2;
   background: rgba(30, 24, 18, .86); color: #fff8e8; border: 2px solid #fff8e8; border-radius: 8px;
   padding: 14px 16px 10px; box-shadow: 0 4px 0 rgba(0,0,0,.3);
 }
@@ -453,8 +453,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .talk-log b { font-weight: 400; }
 .talk-form { display: flex; gap: 6px; }
 @media (max-width: 520px) {
-  .talk-scene { aspect-ratio: 4 / 3.4; }
-  .talk-box { min-height: 26%; padding: 12px 10px 8px; }
+  .talk-scene { aspect-ratio: 4 / 3; max-height: 38vh; }
+  .portrait { height: 96%; }
+  .portrait canvas.pixel { height: 58%; margin-bottom: 15%; }
+  .talk-box { min-height: 21%; padding: 12px 10px 8px; }
 }
 
 /* 선물 고르기 */
@@ -476,3 +478,12 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .profile-btn:hover { background: #ffe9c2; }
 .profile-thumb { width: 24px; height: 24px; object-fit: cover; border-radius: 4px; border: 1px solid var(--panel-edge); }
+
+/* PC: 프로필 그림 크기 (대화 화면 높이의 94%, 그림 아래 끝이 화면 아래에 닿도록) */
+@media (min-width: 521px) {
+  .portrait { overflow: hidden; }
+  .portrait img {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    height: 94%; width: auto; max-height: none; max-width: none;
+  }
+}
