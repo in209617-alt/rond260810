@@ -32,7 +32,8 @@ export async function connect(firebaseConfig) {
     import(SDK + "firebase-auth.js"),
     import(SDK + "firebase-database.js")
   ]);
-  const { ref, set, update, remove, onValue, onDisconnect, serverTimestamp } = dbMod;
+  const { ref, set, update, remove, get, push, query, orderByChild, startAt, endAt, limitToLast,
+    onValue, onChildAdded, onDisconnect, serverTimestamp } = dbMod;
 
   const app = appMod.initializeApp(firebaseConfig);
   const auth = authMod.getAuth(app);
@@ -48,6 +49,7 @@ export async function connect(firebaseConfig) {
 
   let meRef = null, mySlot = null, myUid = null, lastState = null;
   let lastLook = null, lookWarned = false;
+  let roomKey = null;
   let latest = {};
   let heartbeat = null, recheck = null;
   const unsubs = [];
@@ -134,7 +136,7 @@ export async function connect(firebaseConfig) {
     }
     if (!seat) { stopListening(); throw new RoomFullError(); }
 
-    meRef = seat.r; mySlot = seat.slotKey; lastState = seat.state;
+    meRef = seat.r; mySlot = seat.slotKey; lastState = seat.state; roomKey = room;
     log("입장 완료: 방", room, "자리", mySlot);
     unsubs.push(stopListening);
     dispatch();
@@ -199,6 +201,51 @@ export async function connect(firebaseConfig) {
     meRef = null;
   }
 
+  // ---------- 채팅 · 대화 요청 · 선물 · 프로필 ----------
+  // 채팅:  rooms/{방}/chat/{id}    = { uid, name, slot, text, t }   (모두가 보는 채팅창)
+  // 신호:  rooms/{방}/events/{id}  = { uid, from, to, type, text?, item?, t }  (1:1 대화·선물 주고받기)
+  // 프로필: rooms/{방}/profiles/{uid} = "data:image/png;base64,..."
+  const warnOnce = {};
+  const fail = what => e => {
+    if (warnOnce[what]) return;
+    warnOnce[what] = true;
+    console.warn(`[forest] ${what} 실패. Firebase 보안 규칙에 chat·events·profiles 부분을 추가했는지 확인해 주세요.`, e.code || e.message);
+  };
+
+  function sendChat(name, slot, text) {
+    if (!roomKey) return Promise.resolve();
+    return push(ref(db, `rooms/${roomKey}/chat`), { uid: myUid, name, slot, text, t: serverTimestamp() }).catch(fail("채팅 보내기"));
+  }
+  function onChat(cb) {
+    const u = onChildAdded(query(ref(db, `rooms/${roomKey}/chat`), limitToLast(40)), s => cb(s.val()), fail("채팅 읽기"));
+    unsubs.push(u);
+  }
+  function sendEvent(to, type, extra = {}) {
+    if (!roomKey) return Promise.resolve();
+    return push(ref(db, `rooms/${roomKey}/events`), { uid: myUid, from: mySlot, to, type, t: serverTimestamp(), ...extra }).catch(fail("신호 보내기"));
+  }
+  function onEvent(cb) {
+    const q = query(ref(db, `rooms/${roomKey}/events`), orderByChild("t"), startAt(serverNow() - 3000));
+    const u = onChildAdded(q, s => {
+      const e = s.val();
+      if (e && e.to === mySlot && e.from !== mySlot) cb(e);
+    }, fail("신호 읽기"));
+    unsubs.push(u);
+    // 1분 넘은 오래된 신호는 정리
+    get(query(ref(db, `rooms/${roomKey}/events`), orderByChild("t"), endAt(serverNow() - 60000)))
+      .then(snap => snap.forEach(c => { remove(c.ref).catch(() => {}); }))
+      .catch(() => {});
+  }
+  function setProfile(dataUrl) {
+    if (!roomKey || !myUid) return Promise.resolve();
+    return set(ref(db, `rooms/${roomKey}/profiles/${myUid}`), dataUrl).catch(fail("프로필 올리기"));
+  }
+  function watchProfile(uid, cb) {
+    const u = onValue(ref(db, `rooms/${roomKey}/profiles/${uid}`), s => cb(s.val()), () => {});
+    unsubs.push(u);
+    return u;
+  }
+
   // 화면의 "접속 정보"에 보여 줄 현재 상태
   function debugInfo() {
     return SLOTS.map(k => {
@@ -212,5 +259,7 @@ export async function connect(firebaseConfig) {
     });
   }
 
-  return { onAuth, signIn, signOut, join, send, sendLook, leave, debugInfo, get uid() { return auth.currentUser?.uid || null; } };
+  return { onAuth, signIn, signOut, join, send, sendLook, leave, debugInfo,
+    sendChat, onChat, sendEvent, onEvent, setProfile, watchProfile, serverNow,
+    get mySlot() { return mySlot; }, get uid() { return auth.currentUser?.uid || null; } };
 }

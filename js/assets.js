@@ -4,8 +4,8 @@
 // 파일이 없거나 불러오지 못하면 게임에 들어 있는 기본 그림을 대신 써요.
 // 그래서 원하는 파일만 골라서 하나씩 바꿔도 게임이 멈추지 않아요.
 
-import { ASSET_LIST, generateDefaultAssets } from "./world.js?v=11";
-import { ITEMS } from "./items.js?v=11";
+import { ASSET_LIST, generateDefaultAssets } from "./world.js?v=12";
+import { ITEMS } from "./items.js?v=12";
 
 // 그림을 바꿨는데 예전 그림이 계속 보이면 이 숫자를 1 올려 주세요 (브라우저 캐시 무시용)
 export const ASSET_VERSION = 2;

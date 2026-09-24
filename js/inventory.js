@@ -1,7 +1,7 @@
 // 인벤토리 상태 (칸 10개 + 입은 옷 + 코인)
 // 화면과 상관없는 "데이터"만 다뤄요. 바뀔 때마다 이 브라우저에 자동 저장돼요.
 
-import { ITEMS, EQUIP_SLOTS, INVENTORY_SIZE, STARTER } from "./items.js?v=11";
+import { ITEMS, EQUIP_SLOTS, INVENTORY_SIZE, STARTER } from "./items.js?v=12";
 
 const SAVE_PREFIX = "forest.save.";
 

@@ -1,8 +1,8 @@
 // 인벤토리(아래 칸 10개) · 가방 화면 · 상점 · 알림 메시지
 // PC(마우스·키보드)와 모바일(터치)에서 똑같이 동작해요. 모든 조작은 "누르기(클릭/탭)"로 돼요.
 
-import { ITEMS, EQUIP_SLOTS, INVENTORY_SIZE, josa } from "./items.js?v=11";
-import { sfx } from "./effects.js?v=11";
+import { ITEMS, EQUIP_SLOTS, INVENTORY_SIZE, josa } from "./items.js?v=12";
+import { sfx } from "./effects.js?v=12";
 
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
@@ -11,7 +11,7 @@ const el = (tag, cls, text) => {
   return e;
 };
 
-export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange }) {
+export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange, onProfile }) {
   // ---------- 아이콘 ----------
   function iconEl(id) {
     const img = art("items/" + id);
@@ -86,11 +86,22 @@ export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange }) {
     equipButtons[s.key] = b;
     equipCol.append(wrap);
   }
+  const previewCol = el("div", "preview-col");
   const previewBox = el("div", "preview");
   const preview = el("canvas");
   previewBox.append(preview);
+  // 대화창에 쓸 프로필 그림 넣기
+  const profileBtn = el("button", "profile-btn");
+  profileBtn.type = "button";
+  const profileThumb = el("img", "profile-thumb");
+  profileThumb.alt = "";
+  profileThumb.hidden = true;
+  profileBtn.append(profileThumb, el("span", null, "프로필 추가하기"));
+  profileBtn.title = "PNG 그림을 넣으면 1:1 대화창에 나와요";
+  profileBtn.addEventListener("click", () => onProfile?.());
+  previewCol.append(previewBox, profileBtn);
   const info = el("div", "hand-info");
-  bagTop.append(equipCol, previewBox, info);
+  bagTop.append(equipCol, previewCol, info);
 
   const bagGrid = el("div", "bag-grid");
   const gridButtons = [];
@@ -447,6 +458,11 @@ export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange }) {
     wearFromSlot,
     toast,
     tickPreview,
+    setProfileThumb(url) {
+      profileThumb.src = url || "";
+      profileThumb.hidden = !url;
+      profileBtn.querySelector("span").textContent = url ? "프로필 바꾸기" : "프로필 추가하기";
+    },
     setVisible(v) { hotbar.hidden = !v; if (!v) hint.hidden = true; else renderHint(); }
   };
 }
