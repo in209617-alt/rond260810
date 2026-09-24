@@ -412,21 +412,22 @@ button { -webkit-tap-highlight-color: transparent; }
 .talk-modal { z-index: 25; }
 .talk-panel { width: min(760px, 100%); }
 .talk-scene {
-  position: relative; aspect-ratio: 16 / 9; max-height: 52vh; width: 100%;
+  position: relative; aspect-ratio: 16 / 10; max-height: 60vh; width: 100%;
   border: 3px solid var(--panel-edge); border-radius: 10px; overflow: hidden;
   background:
     radial-gradient(ellipse at 50% 120%, rgba(255, 240, 200, .5), transparent 60%),
     linear-gradient(#9fd0e8 0%, #cde9c4 55%, #7cb342 56%, #5f9a39 100%);
 }
 .portrait {
-  position: absolute; bottom: 0; width: 44%; height: 88%;
+  position: absolute; bottom: 12%; width: 49%; height: 88%;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
   transition: filter .25s, transform .25s;
 }
-.portrait.left { left: 2%; }
-.portrait.right { right: 2%; }
+.portrait.left { left: 0; }
+.portrait.right { right: 0; }
 .portrait img, .portrait canvas { max-width: 100%; max-height: 100%; object-fit: contain; object-position: bottom; }
-.portrait canvas.pixel { height: 78%; width: auto; image-rendering: pixelated; }
+/* 프로필 없을 때의 도트 캐릭터: 크게, 얼굴이 대사 상자 위로 오도록 */
+.portrait canvas.pixel { height: 100%; width: auto; max-width: 100%; object-fit: contain; image-rendering: pixelated; }
 .portrait.dim { filter: brightness(.45) saturate(.7); }
 .portrait.speaking { transform: translateY(-2%) scale(1.03); }
 .portrait-name {
@@ -434,7 +435,7 @@ button { -webkit-tap-highlight-color: transparent; }
   padding: 1px 8px; border-radius: 6px;
 }
 .talk-box {
-  position: absolute; left: 3%; right: 3%; bottom: 4%; min-height: 26%;
+  position: absolute; left: 3%; right: 3%; bottom: 3%; min-height: 21%; z-index: 2;
   background: rgba(30, 24, 18, .86); color: #fff8e8; border: 2px solid #fff8e8; border-radius: 8px;
   padding: 14px 16px 10px; box-shadow: 0 4px 0 rgba(0,0,0,.3);
 }
@@ -452,8 +453,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .talk-log b { font-weight: 400; }
 .talk-form { display: flex; gap: 6px; }
 @media (max-width: 520px) {
-  .talk-scene { aspect-ratio: 4 / 3; }
-  .talk-box { min-height: 34%; padding: 12px 10px 8px; }
+  .talk-scene { aspect-ratio: 4 / 3.4; }
+  .talk-box { min-height: 26%; padding: 12px 10px 8px; }
 }
 
 /* 선물 고르기 */
