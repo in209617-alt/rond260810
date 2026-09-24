@@ -10,14 +10,16 @@
 // buy       : 상점에서 살 때 가격 (없으면 상점 구매 목록에 안 나와요)
 // sell      : 상점에 팔 때 가격
 // color     : 먹을 때 튀는 부스러기 색
+// knockout  : 먹으면 이 시간(ms) 동안 쓰러져서 움직일 수 없어요
 
 export const ITEMS = {
   weed:    { name: "잡초", kind: "food", stack: 99, sell: 1, color: "#6fae43", desc: "어디에나 자라는 풀. 씹으면 풋풋해요." },
   berry:   { name: "베리", kind: "food", stack: 99, sell: 3, color: "#5b6ee0", desc: "덤불에서 딴 새콤달콤한 열매." },
   apple:   { name: "사과", kind: "food", stack: 99, sell: 3, color: "#d8453a", desc: "나무에서 딴 아삭한 사과." },
+  mushroom:{ name: "버섯", kind: "food", stack: 99, sell: 2, color: "#c9423a", desc: "숲 바닥에서 주운 빨간 버섯. 먹어도 괜찮을까…?", knockout: 5000 },
   ribbon:  { name: "리본", kind: "wear", slot: "head", stack: 1, buy: 10, sell: 5, desc: "머리에 다는 분홍 리본." },
   glasses: { name: "안경", kind: "wear", slot: "acc", stack: 1, buy: 10, sell: 5, desc: "동그란 뿔테 안경." },
-  shirt:   { name: "줄무늬 셔츠", kind: "wear", slot: "top", stack: 1, sell: 2, desc: "산뜻한 줄무늬 상의." },
+  shirt:   { name: "줄무늬 셔츠", kind: "wear", slot: "top", stack: 1, sell: 2, desc: "핑크색 줄무늬 옷. 검은색 머리를 가진 남자가 입으면 매우 잘 어울린다!" },
   overalls:{ name: "멜빵바지", kind: "wear", slot: "bottom", stack: 1, sell: 2, desc: "튼튼한 청 멜빵바지." }
 };
 

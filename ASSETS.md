@@ -95,6 +95,7 @@
 | `weed.png` | 잡초 |
 | `berry.png` | 베리 |
 | `apple.png` | 사과 |
+| `mushroom.png` | 버섯 (맵에 있는 버섯은 `decor/mushroom.png`) |
 | `ribbon.png` | 리본 |
 | `glasses.png` | 안경 |
 | `shirt.png` | 줄무늬 셔츠 |

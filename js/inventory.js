@@ -1,7 +1,7 @@
 // 인벤토리 상태 (칸 10개 + 입은 옷 + 코인)
 // 화면과 상관없는 "데이터"만 다뤄요. 바뀔 때마다 이 브라우저에 자동 저장돼요.
 
-import { ITEMS, EQUIP_SLOTS, INVENTORY_SIZE, STARTER } from "./items.js?v=10";
+import { ITEMS, EQUIP_SLOTS, INVENTORY_SIZE, STARTER } from "./items.js?v=11";
 
 const SAVE_PREFIX = "forest.save.";
 
@@ -143,11 +143,13 @@ export class Inventory {
 }
 
 // 다른 플레이어의 옷차림 문자열 해석
+// "ko=left|right"는 쓰러져 있다는 표시예요
 export function parseLook(str) {
   const out = {};
   String(str || "").split(";").forEach(pair => {
     const [slot, id] = pair.split("=");
     if (ITEMS[id]?.slot === slot) out[slot] = id;
+    if (slot === "ko" && (id === "left" || id === "right")) out.ko = id;
   });
   return out;
 }

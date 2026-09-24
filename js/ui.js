@@ -1,8 +1,8 @@
 // 인벤토리(아래 칸 10개) · 가방 화면 · 상점 · 알림 메시지
 // PC(마우스·키보드)와 모바일(터치)에서 똑같이 동작해요. 모든 조작은 "누르기(클릭/탭)"로 돼요.
 
-import { ITEMS, EQUIP_SLOTS, INVENTORY_SIZE, josa } from "./items.js?v=10";
-import { sfx } from "./effects.js?v=10";
+import { ITEMS, EQUIP_SLOTS, INVENTORY_SIZE, josa } from "./items.js?v=11";
+import { sfx } from "./effects.js?v=11";
 
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
@@ -194,21 +194,15 @@ export function createUI({ root, inv, art, drawPreview, onUse, onOpenChange }) {
     if (!shop.hidden) renderShop();
   }
 
-  function renderHint() {
-    const s = selected >= 0 ? inv.slots[selected] : null;
-    if (!s || !bag.hidden || !shop.hidden) { hint.hidden = true; return; }
-    const it = ITEMS[s.id];
-    const touch = matchMedia("(pointer: coarse)").matches;
-    hint.textContent = `${it.name} · ${touch ? "화면을 누르면" : "화면을 클릭하면"} ${it.kind === "food" ? "먹어요" : "입어요"}${touch ? "" : " · Q 버리기"}`;
-    hint.hidden = false;
-  }
+  // 아래 바 위의 안내 문구는 쓰지 않아요
+  function renderHint() { hint.hidden = true; }
 
   function renderHand() {
     const item = handItem();
     if (!item) {
       hand = null;
       ghost.hidden = true;
-      info.replaceChildren(el("p", "dim", "아이템을 눌러서 집고, 다른 칸을 눌러 옮겨요. 옷은 왼쪽 칸에 놓으면 입어요."));
+      info.replaceChildren(el("p", "dim", "아이템을 클릭해서 이동시킬 수 있습니다. 아이템은 클릭한 상태로 상호작용할 수 있습니다."));
       eatBtn.hidden = wearBtn.hidden = offBtn.hidden = true;
       trashBtn.classList.remove("ready");
       return;

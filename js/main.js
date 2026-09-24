@@ -1,20 +1,20 @@
 import {
-  T, MW, MH, WALK, RUN, WATER, ground, idx, objects, groundCanvas, ART, CHAR, DIRS,
+  T, MW, MH, WALK, RUN, WATER, ground, idx, objects, mushrooms, groundCanvas, ART, CHAR, DIRS,
   buildWorld, spriteFor, shadowW, blocked, spawnFor, PLAYER_LOOKS
-} from "./world.js?v=10";
-import { loadAssets } from "./assets.js?v=10";
-import { firebaseConfig } from "./firebase-config.js?v=10";
-import { connect, RoomFullError, NotInvitedError } from "./net.js?v=10";
-import { ITEMS, GATHER, DRAW_ORDER, josa } from "./items.js?v=10";
-import { Inventory, parseLook } from "./inventory.js?v=10";
-import { createUI } from "./ui.js?v=10";
-import { eatBurst, leafBurst, poof, floatText, updateEffects, drawParticles, drawFloaters, sfx } from "./effects.js?v=10";
+} from "./world.js?v=11";
+import { loadAssets } from "./assets.js?v=11";
+import { firebaseConfig } from "./firebase-config.js?v=11";
+import { connect, RoomFullError, NotInvitedError } from "./net.js?v=11";
+import { ITEMS, GATHER, DRAW_ORDER, josa } from "./items.js?v=11";
+import { Inventory, parseLook } from "./inventory.js?v=11";
+import { createUI } from "./ui.js?v=11";
+import { eatBurst, leafBurst, poof, floatText, updateEffects, drawParticles, drawFloaters, sfx } from "./effects.js?v=11";
 
 const SEND_INTERVAL = 70;   // 이동 중 위치 전송 간격(ms) ≈ 초당 14회
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DIR_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
-const VERSION = "v10";
+const VERSION = "v11";
 
 // ---------- 화면 만들기 ----------
 // 화면 UI는 여기서 직접 만들어요. index.html이 예전 버전이어도 항상 최신 화면이 나와요.
@@ -81,7 +81,7 @@ if (!document.getElementById("game")) {
 stage.insertAdjacentHTML("beforeend", UI_HTML);
 // 스타일 파일도 최신 버전으로
 document.querySelectorAll('link[rel="stylesheet"]').forEach(l => {
-  if (/(^|\/)style\.css/.test(l.getAttribute("href") || "")) l.href = "style.css?v=10";
+  if (/(^|\/)style\.css/.test(l.getAttribute("href") || "")) l.href = "style.css?v=11";
 });
 
 // 그래픽 리소스(assets 폴더)를 모두 불러온 뒤 시작
@@ -112,6 +112,8 @@ Object.assign(me, spawnFor(0));
 const remotes = new Map(); // 자리 번호("0"/"1") -> 원격 플레이어
 let net = null, user = null, roomName = "", playing = false, connected = true, seatedUid = null;
 me.eatT = 0;
+me.koT = 0;          // 쓰러져 있는 남은 시간(초)
+me.koSide = "right"; // 쓰러진 방향
 const inv = new Inventory();
 
 // ---------- 로비 ----------
@@ -254,7 +256,7 @@ function startGame() {
   inv.load(seatedUid || "local");   // 인벤토리는 이 브라우저에 계정별로 저장돼요
   ui.setVisible(true);
   $("help").hidden = false;
-  net?.sendLook(inv.look());
+  net?.sendLook(currentLook());
   canvas.focus({ preventScroll: true });
 }
 
@@ -404,7 +406,11 @@ $("run").addEventListener("pointerdown", e => {
 let lastSend = 0;
 function updateMe(dt, now) {
   me.eatT = Math.max(0, me.eatT - dt);
-  const d = playing && !ui.isOpen() ? held[held.length - 1] : null;
+  if (me.koT > 0) {
+    me.koT = Math.max(0, me.koT - dt);
+    if (me.koT === 0) { ui.toast("정신을 차리고 일어났다!"); syncLook(); }
+  }
+  const d = playing && !ui.isOpen() && me.koT === 0 ? held[held.length - 1] : null;
   me.moving = !!d;
   me.running = me.moving && (shift || touchRun);
   if (d) {
@@ -466,6 +472,25 @@ function drawCharacter(g, slot, dir, frame, x, y, look) {
   }
 }
 
+// 쓰러진 캐릭터: 정면 그림을 옆으로 90도 눕혀서 그리고, 머리 위에 별이 빙글빙글
+function drawKnockedOut(g, p, t) {
+  const ch = CHAR[p.slot];
+  const right = p.ko === "right";
+  g.save();
+  g.translate(Math.round(p.x + (right ? -ch.h / 2 : ch.h / 2)), Math.round(p.y - ch.w / 2));
+  g.rotate(right ? Math.PI / 2 : -Math.PI / 2);
+  drawCharacter(g, p.slot, "down", 0, 0, 0, p.look);
+  g.restore();
+  // 어지러운 별
+  const hx = p.x + (right ? ch.h / 2 - 6 : -ch.h / 2 + 6), hy = p.y - 12;
+  g.fillStyle = "#ffe14d";
+  for (let i = 0; i < 3; i++) {
+    const a = t * 5 + i * (Math.PI * 2 / 3);
+    const sx = Math.round(hx + Math.cos(a) * 6), sy = Math.round(hy + Math.sin(a) * 2);
+    g.fillRect(sx, sy - 1, 1, 3); g.fillRect(sx - 1, sy, 3, 1);
+  }
+}
+
 // 가방 화면의 캐릭터 미리보기
 function drawPreview(cv, dirIndex) {
   const ch = CHAR[me.slot];
@@ -501,22 +526,33 @@ function render(now) {
       ctx.drawImage(sparkle, tx * T + ((tx * 7 + ty * 3) % 9) + 3, ty * T + ((tx * 5 + ty * 11) % 8) + 5);
   }
 
+  // 주울 수 있는 버섯
+  const mush = ART["decor/mushroom"];
+  for (const s of mushrooms) {
+    if (s.picked || s.tx < vx0 - 1 || s.tx > vx1 + 1 || s.ty < vy0 - 1 || s.ty > vy1 + 1) continue;
+    ctx.drawImage(mush, s.tx * T, s.ty * T, T, T);
+  }
+
   // 화면 안 오브젝트 + 플레이어들을 y순으로 정렬해 앞뒤 겹침 처리
   const list = objects.filter(o => o.x > camX - 48 && o.x < camX + viewW + 48 && o.y > camY - 8 && o.y < camY + viewH + 60);
   const hop = me.eatT > 0 ? -Math.round(Math.abs(Math.sin(me.eatT * 22))) : 0; // 먹을 때 통통
-  const people = [{ x: me.x, y: me.y, hop, slot: me.slot, dir: me.dir, frame: frameIndex(me), name: me.name, self: true, look: inv.equip }];
-  for (const r of remotes.values()) people.push({ x: r.rx, y: r.ry, hop: 0, slot: r.slot, dir: r.dir, frame: frameIndex(r), name: r.name, look: r.look });
+  const people = [{ x: me.x, y: me.y, hop, slot: me.slot, dir: me.dir, frame: frameIndex(me), name: me.name, self: true, look: inv.equip, ko: me.koT > 0 ? me.koSide : null }];
+  for (const r of remotes.values()) people.push({ x: r.rx, y: r.ry, hop: 0, slot: r.slot, dir: r.dir, frame: frameIndex(r), name: r.name, look: r.look, ko: r.look?.ko || null });
 
   // 그림자 (effects/shadow.png를 크기에 맞게 늘려서 사용)
   const shadow = ART["effects/shadow"];
   for (const o of list) { const w = shadowW[o.type]; ctx.drawImage(shadow, o.x - w, o.y - 5, w * 2, 6); }
-  for (const p of people) ctx.drawImage(shadow, p.x - 5, p.y - 3, 10, 4);
+  for (const p of people) {
+    if (p.ko) ctx.drawImage(shadow, p.x - 11, p.y - 3, 22, 4);
+    else ctx.drawImage(shadow, p.x - 5, p.y - 3, 10, 4);
+  }
 
   const drawables = [...list, ...people.map(p => ({ ...p, type: "player" }))].sort((a, b) => a.y - b.y);
   for (const o of drawables) {
     if (o.type === "player") {
       // 캐릭터 시트에서 (동작 칸, 방향 줄)을 잘라 발밑이 위치에 오도록 그림
-      drawCharacter(ctx, o.slot, o.dir, o.frame, o.x, o.y + o.hop, o.look);
+      if (o.ko) drawKnockedOut(ctx, o, t);
+      else drawCharacter(ctx, o.slot, o.dir, o.frame, o.x, o.y + o.hop, o.look);
     } else {
       const s = spriteFor(o);
       let sway = (o.type === "tree" || o.type === "pine") && !reduceMotion ? Math.round(Math.sin(t * 0.9 + o.tx * 0.7) * 0.6) : 0;
@@ -545,7 +581,7 @@ function render(now) {
     ctx.font = `${Math.round(13 * dpr)}px "Do Hyeon", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const p of people) {
-      const sx = (p.x - camX) * scale, sy = (p.y - CHAR[p.slot].h + 5 - camY) * scale;
+      const sx = (p.x - camX) * scale, sy = (p.y - (p.ko ? 18 : CHAR[p.slot].h - 5) - camY) * scale;
       const label = p.self ? `${p.name} (나)` : p.name;
       const w = ctx.measureText(label).width + 12 * dpr, h = 18 * dpr;
       ctx.fillStyle = "rgba(243, 227, 195, 0.92)";
@@ -583,12 +619,17 @@ const ui = createUI({
 });
 ui.setVisible(false);
 
-// 옷차림이 바뀌면 친구에게도 알려 줘요
+// 옷차림(+ 쓰러짐 상태)이 바뀌면 친구에게도 알려 줘요
 let sentLook = "";
-inv.onChange(() => {
+function currentLook() {
   const look = inv.look();
+  return me.koT > 0 ? (look ? look + ";" : "") + "ko=" + me.koSide : look;
+}
+function syncLook() {
+  const look = currentLook();
   if (look !== sentLook && playing) { sentLook = look; net?.sendLook(look); }
-});
+}
+inv.onChange(syncLook);
 
 // ---------- 아이템 사용 ----------
 function useSlot(i) {
@@ -601,6 +642,14 @@ function useSlot(i) {
     eatBurst(me.x, me.y, it.color);
     sfx.eat();
     ui.toast(`${josa(it.name, "을", "를")} 먹었다!`);
+    if (it.knockout) {
+      // 먹으면 옆으로 쓰러져서 잠시 움직일 수 없어요
+      me.koT = it.knockout / 1000;
+      me.koSide = me.dir === "left" ? "left" : "right";
+      held = [];
+      setTimeout(() => { sfx.dizzy(); ui.toast("어지러워서 쓰러졌다…", "warn"); }, 350);
+      syncLook();
+    }
     return true;
   }
   if (it.kind === "wear") return ui.wearFromSlot(i);
@@ -678,11 +727,30 @@ function interact(o, now) {
   else { floatText(o.x, top, "아무것도 없었다", "#fff8e8", "#7a5a3e"); sfx.miss(); }
 }
 
+// 누른 위치의 버섯 (한 칸 크기로 넉넉하게 판정)
+function mushroomAt(wx, wy) {
+  return mushrooms.find(s => !s.picked && wx >= s.tx * T && wx < s.tx * T + T && wy >= s.ty * T && wy < s.ty * T + T) || null;
+}
+
 canvas.addEventListener("pointerdown", e => {
   if (!playing || ui.isOpen()) return;
+  if (me.koT > 0) { floatText(me.x, me.y - 26, "어지러워서 움직일 수 없어요", "#fff8e8", "#7a5a3e"); return; }
   const [wx, wy] = worldPoint(e);
   const o = objectAt(wx, wy);
   const now = performance.now();
+  const shroom = o ? null : mushroomAt(wx, wy);
+  if (shroom) {
+    if (Math.hypot(me.x - shroom.x, me.y - shroom.y - 6) > GATHER.reach) {
+      floatText(shroom.x, shroom.y - 8, "더 가까이 가 주세요", "#fff8e8", "#7a5a3e");
+      return;
+    }
+    faceTowards(shroom.x, shroom.y);
+    if (giveItem("mushroom", shroom.x, shroom.y - 8)) {
+      shroom.picked = true;          // 주우면 맵에서 사라져요
+      leafBurst(shroom.x, shroom.y);
+    }
+    return;
+  }
   if (o) {
     if (Math.hypot(me.x - o.x, me.y - o.y) > GATHER.reach) {
       floatText(o.x, o.y - spriteFor(o).height + 4, "더 가까이 가 주세요", "#fff8e8", "#7a5a3e");
@@ -697,7 +765,7 @@ canvas.addEventListener("pointerdown", e => {
 canvas.addEventListener("pointermove", e => {
   if (!playing || e.pointerType === "touch") return;
   const [wx, wy] = worldPoint(e);
-  const o = objectAt(wx, wy);
+  const o = objectAt(wx, wy) || mushroomAt(wx, wy);
   canvas.style.cursor = o ? "pointer" : (ui.selected >= 0 && inv.slots[ui.selected] ? "cell" : "default");
 });
 
@@ -730,5 +798,5 @@ requestAnimationFrame(loop);
 // 예) __forest.fakeRemote({ x: 470, y: 414, dir: "left", moving: true })
 window.__forest = {
   fakeRemote(p) { upsertRemote("fake", { name: "테스트", slot: 1, dir: "down", moving: false, ...p }, !remotes.has("fake")); },
-  me, inv, objects, cam: () => ({ ...cam, scale, dpr })
+  me, inv, objects, mushrooms, cam: () => ({ ...cam, scale, dpr })
 };

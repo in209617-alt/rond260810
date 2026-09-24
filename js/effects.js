@@ -4,7 +4,7 @@
 const particles = [];
 const floaters = [];
 
-// 먹을 때: 부스러기 + 하트 + "냠!"
+// 먹을 때: 부스러기 + 하트
 export function eatBurst(x, y, color) {
   for (let i = 0; i < 12; i++) {
     const a = Math.random() * Math.PI * 2, sp = 20 + Math.random() * 40;
@@ -13,7 +13,6 @@ export function eatBurst(x, y, color) {
   for (let i = 0; i < 3; i++) {
     particles.push({ x: x - 6 + i * 6, y: y - 18, vx: (i - 1) * 6, vy: -26 - i * 4, g: 0, life: 1.1, t: -i * 0.12, heart: true });
   }
-  floatText(x, y - 26, "냠!", "#ffffff", "#d9674a");
 }
 
 // 채집할 때: 잎사귀가 튐
@@ -136,6 +135,7 @@ export const sfx = {
   coin() { tone(988, 0, 0.07, "square", 0.04); tone(1319, 0.06, 0.14, "square", 0.04); },
   trash() { tone(220, 0, 0.15, "triangle", 0.06, -120); },
   wear() { tone(523, 0, 0.07, "triangle"); tone(784, 0.06, 0.1, "triangle"); },
+  dizzy() { tone(700, 0, 0.5, "sine", 0.05, -450); tone(500, 0.15, 0.5, "sine", 0.04, -300); },
   miss() { tone(330, 0, 0.08, "triangle", 0.04, -60); },
   click() { tone(880, 0, 0.03, "square", 0.02); }
 };

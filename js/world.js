@@ -174,6 +174,15 @@ for (let ty = 1; ty < MH - 1; ty++) for (let tx = 1; tx < MW - 1; tx++) {
   else if (r < 0.08) decor[idx(tx, ty)] = "decor/mushroom";
 }
 
+// 주울 수 있는 버섯 (칸 위치). picked가 true가 되면 맵에서 사라져요
+export const mushrooms = [];
+for (let i = 0; i < decor.length; i++) {
+  if (decor[i] === "decor/mushroom") {
+    const tx = i % MW, ty = Math.floor(i / MW);
+    mushrooms.push({ tx, ty, x: tx * T + T / 2, y: ty * T + T / 2, picked: false });
+  }
+}
+
 // ---------- 리소스 목록 ----------
 // 이름 = assets/ 폴더 안의 경로(확장자 .png 제외)
 export const ASSET_LIST = [
@@ -473,7 +482,8 @@ export function buildWorld(assets) {
     }
   }
   // 꽃·버섯
-  for (let i = 0; i < decor.length; i++) if (decor[i]) put(decor[i], (i % MW) * T, Math.floor(i / MW) * T);
+  // 꽃만 바닥에 그려 넣어요. 버섯은 주울 수 있어서 따로 그려요 (mushrooms 목록)
+  for (let i = 0; i < decor.length; i++) if (decor[i] && decor[i] !== "decor/mushroom") put(decor[i], (i % MW) * T, Math.floor(i / MW) * T);
   groundCanvas = c;
 
   // 캐릭터 시트 자르기 정보 (가로 4칸 × 세로 4줄)
