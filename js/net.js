@@ -28,7 +28,7 @@ export async function connect(firebaseConfig) {
     import(SDK + "firebase-auth.js"),
     import(SDK + "firebase-database.js")
   ]);
-  const { ref, get, set, update, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, serverTimestamp } = dbMod;
+  const { ref, set, update, remove, onValue, onDisconnect, serverTimestamp } = dbMod;
 
   const app = appMod.initializeApp(firebaseConfig);
   const auth = authMod.getAuth(app); // 로그인 상태는 브라우저에 기억돼요
@@ -68,30 +68,59 @@ export async function connect(firebaseConfig) {
     if (!user) throw new NotInvitedError();
     const playersRef = ref(db, `rooms/${room}/players`);
 
+    // 방 전체(자리 2개)를 계속 지켜보는 리스너 하나만 사용해요.
+    // 입장 전 확인과 입장 후 동기화를 같은 리스너로 처리해서, 나중에 들어온 사람을 놓치지 않아요.
+    let latest = {};
+    const seen = new Map(); // 자리 번호 -> 마지막으로 받은 데이터(JSON)
+    let resolveFirst, rejectFirst;
+    const firstSnapshot = new Promise((res, rej) => { resolveFirst = res; rejectFirst = rej; });
+
+    function dispatch(all) {
+      for (const k of SLOTS) {
+        if (k === mySlot) continue;
+        const p = all[k];
+        if (p) {
+          const json = JSON.stringify(p);
+          if (!seen.has(k)) { seen.set(k, json); console.info("[forest] 친구 입장", k, p.name); handlers.onJoin(k, p); }
+          else if (seen.get(k) !== json) { seen.set(k, json); handlers.onMove(k, p); }
+        } else if (seen.has(k)) {
+          seen.delete(k); console.info("[forest] 친구 퇴장", k); handlers.onLeave(k);
+        }
+      }
+    }
+
+    const stopListening = onValue(playersRef, snap => {
+      latest = snap.val() || {};
+      resolveFirst(latest);
+      if (mySlot !== null) dispatch(latest);
+    }, err => {
+      rejectFirst(err);
+      console.error("[forest] 방 데이터를 읽지 못했어요", err);
+    });
+
     let current;
     try {
-      current = (await get(playersRef)).val() || {};
+      current = await firstSnapshot;
     } catch (e) {
+      stopListening();
       // 초대 목록에 없는 계정은 읽기부터 거절돼요
       if (isPermissionError(e)) throw new NotInvitedError();
       throw e;
     }
     const free = SLOTS.filter(k => !current[k]);
-    if (!free.length) throw new RoomFullError();
+    if (!free.length) { stopListening(); throw new RoomFullError(); }
 
     let seat = null;
     for (const k of free) {
       seat = await trySit(room, k, profile, user.uid);
       if (seat) break; // 동시에 들어온 사람이 먼저 앉았으면 다음 자리 시도
     }
-    if (!seat) throw new RoomFullError();
+    if (!seat) { stopListening(); throw new RoomFullError(); }
 
     meRef = seat.r; mySlot = seat.slotKey; lastState = seat.state;
-
-    const others = fn => s => { if (s.key !== mySlot) fn(s.key, s.val()); };
-    unsubs.push(onChildAdded(playersRef, others(handlers.onJoin)));
-    unsubs.push(onChildChanged(playersRef, others(handlers.onMove)));
-    unsubs.push(onChildRemoved(playersRef, others(handlers.onLeave)));
+    console.info("[forest] 입장 완료", room, "자리", mySlot);
+    unsubs.push(stopListening);
+    dispatch(latest); // 앉는 동안 받은 최신 상태 반영
 
     // 연결 상태 표시 + 재연결 시 내 자리 복구
     let wasConnected = true;
